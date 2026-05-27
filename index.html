@@ -1,0 +1,1412 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>Purchase Amount Monthly Report</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#0d1117;--surface:#161b22;--surface2:#1e242d;--border:#30363d;
+  --text:#e6edf3;--muted:#8b949e;
+  --blue:#58a6ff;--green:#3fb950;--orange:#f0883e;
+  --purple:#a371f7;--red:#f85149;--cyan:#39d3f5;--yellow:#e3b341;
+  --radius:12px;--shadow:0 4px 24px rgba(0,0,0,.5);
+}
+html{font-size:14px}
+body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,sans-serif;min-height:100vh}
+
+/* ── HEADER ── */
+.header{
+  background:linear-gradient(135deg,#0d1117 0%,#1a2332 60%,#0d1117 100%);
+  border-bottom:1px solid var(--border);
+  padding:16px 28px;display:flex;align-items:center;
+  justify-content:space-between;flex-wrap:wrap;gap:12px;
+  position:sticky;top:0;z-index:100;
+}
+.header-left h1{font-size:1.3rem;font-weight:700}
+.header-left h1 span{color:var(--blue)}
+.header-meta{display:flex;gap:6px;align-items:center;margin-top:5px;flex-wrap:wrap}
+.badge{padding:4px 12px;border-radius:20px;font-size:.72rem;font-weight:600;
+  letter-spacing:.4px;text-transform:uppercase}
+.badge-blue{background:rgba(88,166,255,.15);color:var(--blue);border:1px solid rgba(88,166,255,.3)}
+.badge-green{background:rgba(63,185,80,.15);color:var(--green);border:1px solid rgba(63,185,80,.3)}
+.badge-orange{background:rgba(240,136,62,.15);color:var(--orange);border:1px solid rgba(240,136,62,.3)}
+.import-btn{
+  display:flex;align-items:center;gap:8px;
+  background:rgba(88,166,255,.12);border:1px solid rgba(88,166,255,.4);
+  color:var(--blue);border-radius:8px;padding:8px 18px;
+  font-size:.82rem;font-weight:600;cursor:pointer;transition:.2s;
+  white-space:nowrap;
+}
+.import-btn:hover{background:rgba(88,166,255,.22);border-color:var(--blue)}
+.import-btn svg{flex-shrink:0}
+
+/* ── DROP OVERLAY ── */
+.drop-overlay{
+  position:fixed;inset:0;z-index:999;
+  background:rgba(13,17,23,.92);
+  display:none;align-items:center;justify-content:center;
+  backdrop-filter:blur(4px);
+}
+.drop-overlay.visible{display:flex}
+.drop-box{
+  border:2px dashed var(--blue);border-radius:20px;
+  padding:60px 80px;text-align:center;
+  background:rgba(88,166,255,.06);
+  transition:.2s;max-width:500px;width:90%;
+}
+.drop-box.drag-over{background:rgba(88,166,255,.15);border-color:#7cc1ff}
+.drop-box h2{font-size:1.4rem;margin:16px 0 8px;color:var(--blue)}
+.drop-box p{color:var(--muted);font-size:.88rem;line-height:1.6}
+.drop-icon{font-size:3.5rem;line-height:1}
+.drop-close{
+  margin-top:20px;display:inline-block;
+  padding:8px 24px;border-radius:8px;border:1px solid var(--border);
+  color:var(--muted);cursor:pointer;font-size:.8rem;transition:.2s;background:transparent;
+}
+.drop-close:hover{border-color:var(--text);color:var(--text)}
+#fileInput{display:none}
+
+/* ── MAIN ── */
+.main{padding:20px 28px}
+.section-title{
+  font-size:.7rem;font-weight:700;letter-spacing:1.4px;
+  text-transform:uppercase;color:var(--muted);
+  margin:28px 0 14px;display:flex;align-items:center;gap:10px;
+}
+.section-title::after{content:'';flex:1;height:1px;background:var(--border)}
+
+/* ── KPI GRID ── */
+.kpi-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(185px,1fr));gap:12px}
+.kpi-card{
+  background:var(--surface);border:1px solid var(--border);
+  border-radius:var(--radius);padding:16px 18px;
+  position:relative;overflow:hidden;transition:.2s;
+}
+.kpi-card:hover{border-color:var(--blue);transform:translateY(-2px)}
+.kpi-card::before{
+  content:'';position:absolute;top:0;left:0;right:0;
+  height:3px;border-radius:var(--radius) var(--radius) 0 0;
+}
+.kpi-blue::before{background:var(--blue)}
+.kpi-green::before{background:var(--green)}
+.kpi-orange::before{background:var(--orange)}
+.kpi-purple::before{background:var(--purple)}
+.kpi-cyan::before{background:var(--cyan)}
+.kpi-yellow::before{background:var(--yellow)}
+.kpi-label{font-size:.68rem;color:var(--muted);letter-spacing:.6px;text-transform:uppercase;margin-bottom:7px}
+.kpi-value{font-size:1.5rem;font-weight:700;line-height:1}
+.kpi-unit{font-size:.68rem;color:var(--muted);margin-left:3px;font-weight:400}
+.kpi-change{
+  display:flex;align-items:center;gap:5px;
+  margin-top:8px;font-size:.75rem;font-weight:600;
+}
+.kpi-change .arrow{font-size:.7rem}
+.change-up{color:var(--green)}
+.change-dn{color:var(--red)}
+.change-label{color:var(--muted);font-weight:400;font-size:.7rem}
+
+/* ── MOM TABLE ── */
+.mom-table{width:100%;border-collapse:collapse;font-size:.82rem}
+.mom-table th{
+  padding:9px 12px;text-align:left;background:var(--surface2);
+  color:var(--muted);font-size:.7rem;text-transform:uppercase;
+  letter-spacing:.5px;border-bottom:1px solid var(--border);
+}
+.mom-table td{padding:9px 12px;border-bottom:1px solid var(--border)}
+.mom-table tr:last-child td{border-bottom:none}
+.mom-table tr:hover td{background:rgba(255,255,255,.025)}
+.tag{display:inline-block;padding:2px 8px;border-radius:4px;font-size:.72rem;font-weight:600}
+.tag-up{background:rgba(63,185,80,.15);color:var(--green)}
+.tag-dn{background:rgba(248,81,73,.15);color:var(--red)}
+.tag-neu{background:rgba(139,148,158,.15);color:var(--muted)}
+.num-r{text-align:right;font-variant-numeric:tabular-nums}
+
+/* ── CHART CARDS ── */
+.grid-2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.grid-32{display:grid;grid-template-columns:1.5fr 1fr;gap:16px}
+@media(max-width:900px){.grid-2,.grid-32{grid-template-columns:1fr}}
+.card{
+  background:var(--surface);border:1px solid var(--border);
+  border-radius:var(--radius);padding:18px 20px;box-shadow:var(--shadow);
+}
+.card-hd{font-size:.82rem;font-weight:600;margin-bottom:3px}
+.card-sub{font-size:.7rem;color:var(--muted);margin-bottom:14px}
+.ch{position:relative}
+.ch-260{height:260px}
+.ch-280{height:280px}
+.ch-220{height:220px}
+.ch-180{height:180px}
+
+/* ── PROFIT TABLE ── */
+.ptable{width:100%;border-collapse:collapse;font-size:.8rem}
+.ptable th{
+  padding:8px 10px;text-align:left;background:var(--surface2);
+  color:var(--muted);font-size:.68rem;text-transform:uppercase;
+  letter-spacing:.5px;border-bottom:1px solid var(--border);
+}
+.ptable td{padding:8px 10px;border-bottom:1px solid var(--border)}
+.ptable tr.section-row td{
+  background:rgba(88,166,255,.05);color:var(--muted);
+  font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.5px;
+  padding:6px 10px;
+}
+.ptable .val-act{color:var(--blue);font-weight:700}
+.ptable .val-pos{color:var(--green);font-weight:600}
+.ptable .val-neg{color:var(--red);font-weight:600}
+
+/* ── SUPPLIER TABLE ── */
+.sup-table{width:100%;border-collapse:collapse;font-size:.8rem}
+.sup-table th{
+  padding:8px 10px;text-align:left;background:var(--surface2);
+  color:var(--muted);font-size:.68rem;text-transform:uppercase;
+  letter-spacing:.5px;border-bottom:1px solid var(--border);
+}
+.sup-table td{padding:7px 10px;border-bottom:1px solid var(--border)}
+.sup-table tr:last-child td{border-bottom:none}
+.sup-table tr:hover td{background:rgba(255,255,255,.025)}
+.rank{
+  display:inline-flex;align-items:center;justify-content:center;
+  width:22px;height:22px;border-radius:50%;font-size:.68rem;font-weight:700;
+}
+.r1{background:rgba(255,215,0,.2);color:#ffd700}
+.r2{background:rgba(192,192,192,.2);color:#c0c0c0}
+.r3{background:rgba(205,127,50,.2);color:#cd7f32}
+.rn{background:rgba(139,148,158,.1);color:var(--muted)}
+.mini-bar{width:70px;height:5px;background:rgba(255,255,255,.07);border-radius:3px;display:inline-block;vertical-align:middle}
+.mini-bar-fill{height:100%;border-radius:3px;background:var(--blue);display:block}
+
+/* ── FX RATE CARDS ── */
+.fx-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+.fx-card{background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:14px 18px;text-align:center}
+.fx-label{font-size:.7rem;color:var(--muted);text-transform:uppercase;letter-spacing:.6px;margin-bottom:6px}
+.fx-val{font-size:1.4rem;font-weight:700;color:var(--yellow)}
+.fx-unit{font-size:.7rem;color:var(--muted)}
+
+/* ── PO DETAIL TABLE ── */
+.po-search{
+  width:100%;padding:8px 14px;background:var(--surface2);
+  border:1px solid var(--border);border-radius:8px;color:var(--text);
+  font-size:.82rem;margin-bottom:12px;outline:none;
+}
+.po-search:focus{border-color:var(--blue)}
+.scrolltable{max-height:380px;overflow-y:auto;border-radius:8px;border:1px solid var(--border)}
+.scrolltable table{width:100%;border-collapse:collapse;font-size:.78rem}
+.scrolltable th{
+  position:sticky;top:0;z-index:2;
+  padding:8px 10px;background:var(--surface2);color:var(--muted);
+  font-size:.68rem;text-transform:uppercase;letter-spacing:.5px;
+  border-bottom:1px solid var(--border);
+}
+.scrolltable td{padding:7px 10px;border-bottom:1px solid rgba(48,54,61,.5)}
+.scrolltable tr:last-child td{border-bottom:none}
+.scrolltable tr:hover td{background:rgba(255,255,255,.025)}
+.cur-thb{color:var(--green);font-weight:600}
+.cur-usd{color:var(--cyan);font-weight:600}
+.cur-jpy{color:var(--yellow);font-weight:600}
+.cur-eur{color:var(--purple);font-weight:600}
+
+/* ── PRICE CHANGE TABLE ── */
+.up-price{color:var(--red);font-weight:600}
+.dn-price{color:var(--green);font-weight:600}
+.filter-row{display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap}
+.filt-btn{
+  padding:5px 14px;border-radius:6px;border:1px solid var(--border);
+  background:transparent;color:var(--muted);cursor:pointer;font-size:.75rem;transition:.15s;
+}
+.filt-btn.active{background:rgba(88,166,255,.15);border-color:var(--blue);color:var(--blue)}
+
+/* ── FOOTER ── */
+.footer{text-align:center;padding:20px;color:var(--muted);font-size:.7rem;
+  border-top:1px solid var(--border);margin-top:28px}
+
+::-webkit-scrollbar{width:5px}
+::-webkit-scrollbar-track{background:var(--bg)}
+::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px}
+</style>
+</head>
+<body>
+
+<!-- DROP OVERLAY -->
+<div class="drop-overlay" id="dropOverlay">
+  <div class="drop-box" id="dropBox">
+    <div class="drop-icon">📂</div>
+    <h2>วาง Excel ที่นี่</h2>
+    <p>ลาก .xlsx ไฟล์มาวาง หรือคลิกเพื่อเลือกไฟล์<br>
+    รองรับ Monthly Report ทุกเดือน</p>
+    <br>
+    <label for="fileInput" style="display:inline-block;padding:10px 28px;background:var(--blue);
+      color:#0d1117;border-radius:8px;cursor:pointer;font-weight:700;font-size:.88rem">
+      📁 เลือกไฟล์
+    </label>
+    <input type="file" id="fileInput" accept=".xlsx,.xls">
+    <br>
+    <button class="drop-close" onclick="closeOverlay()">ยกเลิก</button>
+  </div>
+</div>
+
+<!-- HEADER -->
+<header class="header">
+  <div class="header-left">
+    <h1>📊 Purchase Amount <span>Monthly Report</span></h1>
+    <div class="header-meta">
+      <span class="badge badge-blue" id="badgeMonth">March 2026</span>
+      <span class="badge badge-green">GROUP : AUTOMOTIVE PART</span>
+      <span class="badge badge-orange" id="badgeFile">📄 3. Mar'26.xlsx (Sample)</span>
+    </div>
+  </div>
+  <button class="import-btn" onclick="openOverlay()">
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+      <path d="M.5 9.9a.5.5 0 0 1 .5.5v2.5a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-2.5a.5.5 0 0 1 1 0v2.5a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2v-2.5a.5.5 0 0 1 .5-.5z"/>
+      <path d="M7.646 1.146a.5.5 0 0 1 .708 0l3 3a.5.5 0 0 1-.708.708L8.5 2.707V11.5a.5.5 0 0 1-1 0V2.707L5.354 4.854a.5.5 0 1 1-.708-.708l3-3z"/>
+    </svg>
+    Import Excel
+  </button>
+</header>
+
+<!-- MAIN -->
+<div class="main">
+
+  <!-- KPI -->
+  <div class="section-title">📌 Key Metrics – <span id="kpiMonthLabel">March 2026</span></div>
+  <div class="kpi-grid" id="kpiGrid"></div>
+
+  <!-- MOM TABLE -->
+  <div class="section-title">🔄 Month-over-Month Comparison (เพิ่ม / ลด vs เดือนก่อน)</div>
+  <div class="card">
+    <div class="card-hd">เปรียบเทียบเดือนปัจจุบัน vs เดือนก่อนหน้า</div>
+    <div class="card-sub" id="momSubLabel">March 2026 vs February 2026</div>
+    <table class="mom-table">
+      <thead>
+        <tr>
+          <th>รายการ</th>
+          <th class="num-r">เดือนก่อน (M THB)</th>
+          <th class="num-r">เดือนนี้ (M THB)</th>
+          <th class="num-r">เปลี่ยน (M THB)</th>
+          <th class="num-r">%</th>
+          <th>สถานะ</th>
+        </tr>
+      </thead>
+      <tbody id="momBody"></tbody>
+    </table>
+  </div>
+
+  <!-- TREND -->
+  <div class="section-title">📈 Monthly Purchase Trend – FY2025</div>
+  <div class="card">
+    <div class="card-hd">Purchase Amount by Category</div>
+    <div class="card-sub">Component | Raw Material | WI &nbsp;(Unit: M THB)</div>
+    <div class="ch ch-280"><canvas id="trendChart"></canvas></div>
+  </div>
+
+  <!-- SALE vs PUR -->
+  <div class="section-title">⚖️ Sale vs Purchase</div>
+  <div class="grid-2">
+    <div class="card">
+      <div class="card-hd">Monthly Sale vs Purchase Total</div>
+      <div class="card-sub">Unit: M THB</div>
+      <div class="ch ch-260"><canvas id="salePurChart"></canvas></div>
+    </div>
+    <div class="card">
+      <div class="card-hd">Outside vs In-House (เดือนนี้)</div>
+      <div class="card-sub">Sale & Purchase แบ่งตามช่องทาง</div>
+      <div class="ch ch-260"><canvas id="channelChart"></canvas></div>
+    </div>
+  </div>
+
+  <!-- OUTSIDE PROFIT -->
+  <div class="section-title">🎯 Outside Profit Plan Achievement</div>
+  <div class="grid-32">
+    <div class="card">
+      <div class="card-hd">Actual vs Plan (M THB)</div>
+      <div class="card-sub" id="profitSubLabel">March 2026</div>
+      <table class="ptable">
+        <thead>
+          <tr><th>Section</th><th>รายการ</th><th class="num-r">Actual</th><th class="num-r">Plan</th><th class="num-r">Diff</th></tr>
+        </thead>
+        <tbody id="profitBody"></tbody>
+      </table>
+    </div>
+    <div class="card">
+      <div class="card-hd">Actual vs Plan Chart</div>
+      <div class="card-sub">Sales comparison by section</div>
+      <div class="ch ch-220"><canvas id="profitChart"></canvas></div>
+    </div>
+  </div>
+
+  <!-- TOP SUPPLIERS -->
+  <div class="section-title">🏭 Top Suppliers (เดือนนี้)</div>
+  <div class="grid-2">
+    <div class="card">
+      <div class="card-hd">Trial & Sample PO – Top Suppliers</div>
+      <div class="card-sub">Purchase Amount (THB)</div>
+      <table class="sup-table">
+        <thead><tr><th>#</th><th>Supplier</th><th class="num-r">Amount (THB)</th><th>สัดส่วน</th></tr></thead>
+        <tbody id="poBody"></tbody>
+      </table>
+    </div>
+    <div class="card">
+      <div class="card-hd">Component Parts – Top Suppliers</div>
+      <div class="card-sub">Purchase Amount (M THB)</div>
+      <table class="sup-table">
+        <thead><tr><th>#</th><th>Supplier</th><th class="num-r">Amount (M THB)</th><th>สัดส่วน</th></tr></thead>
+        <tbody id="cpBody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- CP TREND -->
+  <div class="section-title">📉 Component Supplier Trend – FY2025</div>
+  <div class="card">
+    <div class="card-hd">Top 6 Component Suppliers – Monthly Purchase</div>
+    <div class="card-sub">Unit: M THB</div>
+    <div class="ch ch-280"><canvas id="cpTrendChart"></canvas></div>
+  </div>
+
+  <!-- SECTION ANALYSIS -->
+  <div class="section-title">📊 Purchase by Section (Annual FY2025)</div>
+  <div class="grid-2">
+    <div class="card">
+      <div class="card-hd">IE / SS / FU — Sale Amount (Annual)</div>
+      <div class="card-sub">M THB</div>
+      <div class="ch ch-180"><canvas id="secSaleChart"></canvas></div>
+    </div>
+    <div class="card">
+      <div class="card-hd">IE / SS / FU — Purchase Amount (Annual)</div>
+      <div class="card-sub">M THB</div>
+      <div class="ch ch-180"><canvas id="secPurChart"></canvas></div>
+    </div>
+  </div>
+
+
+  <!-- RAW MATERIAL SUPPLIER TREND -->
+  <div class="section-title">🧱 Raw Material Supplier Trend – FY2025</div>
+  <div class="grid-2">
+    <div class="card">
+      <div class="card-hd">Top Raw Material Suppliers (MAR'26)</div>
+      <div class="card-sub">Purchase Amount (M THB)</div>
+      <table class="sup-table">
+        <thead><tr><th>#</th><th>Supplier</th><th class="num-r">MAR (M THB)</th><th>สัดส่วน</th></tr></thead>
+        <tbody id="matBody"></tbody>
+      </table>
+    </div>
+    <div class="card">
+      <div class="card-hd">Top 6 Raw Material Suppliers – Monthly Trend</div>
+      <div class="card-sub">Unit: M THB</div>
+      <div class="ch ch-260"><canvas id="matTrendChart"></canvas></div>
+    </div>
+  </div>
+
+  <!-- DIRECT IP & EXCHANGE RATE -->
+  <div class="section-title">💱 Direct Import & Exchange Rate</div>
+  <div class="card">
+    <div class="card-hd">Exchange Rate (THB/Unit) — เดือนนี้</div>
+    <div class="card-sub" id="fxSubLabel">March 2026</div>
+    <div class="fx-grid" id="fxGrid">
+      <div class="fx-card"><div class="fx-label">USD / THB</div><div class="fx-val" id="fxUSD">–</div><div class="fx-unit">THB per 1 USD</div></div>
+      <div class="fx-card"><div class="fx-label">EUR / THB</div><div class="fx-val" id="fxEUR">–</div><div class="fx-unit">THB per 1 EUR</div></div>
+      <div class="fx-card"><div class="fx-label">JPY / THB</div><div class="fx-val" id="fxJPY">–</div><div class="fx-unit">THB per 1 JPY</div></div>
+    </div>
+    <br>
+    <div class="card-hd" style="margin-bottom:8px">Top Direct IP Suppliers – Part Count (MAR'26)</div>
+    <div class="ch ch-180"><canvas id="dipChart"></canvas></div>
+  </div>
+
+  <!-- TRIAL & SAMPLE PO DETAIL -->
+  <div class="section-title">📋 Trial & Sample PO – รายการสั่งซื้อ</div>
+  <div class="card">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px">
+      <div>
+        <div class="card-hd">PO Detail – <span id="poCountLabel">0</span> รายการ</div>
+        <div class="card-sub">Total: <span id="poTotalLabel" style="color:var(--green);font-weight:700">–</span></div>
+      </div>
+      <div class="filter-row" style="margin:0" id="currencyFilters"></div>
+    </div>
+    <input class="po-search" id="poSearch" placeholder="🔍 ค้นหา Supplier / Part No. / Part Name..." oninput="filterPO()">
+    <div class="scrolltable"><table>
+      <thead><tr>
+        <th>#</th><th>Supplier</th><th>Order No.</th>
+        <th>Part No.</th><th>Part Name</th>
+        <th class="num-r">Price</th><th class="num-r">Qty</th>
+        <th class="num-r">Amount</th><th>Currency</th>
+      </tr></thead>
+      <tbody id="poDetailBody"></tbody>
+    </table></div>
+  </div>
+
+  <!-- PART PRICE MONITOR -->
+  <div class="section-title">💰 Part Price Monitor – ราคาที่เปลี่ยนแปลง (vs 2024)</div>
+  <div class="card">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px">
+      <div>
+        <div class="card-hd">ชิ้นส่วนที่ราคาเปลี่ยน – <span id="priceChgCount">0</span> รายการ</div>
+        <div class="card-sub">เปรียบเทียบราคา MAR'26 vs Price 2024</div>
+      </div>
+      <div class="filter-row" style="margin:0">
+        <button class="filt-btn active" onclick="filterPrice('ALL',this)">ทั้งหมด</button>
+        <button class="filt-btn" onclick="filterPrice('UP',this)">▲ ขึ้น</button>
+        <button class="filt-btn" onclick="filterPrice('DN',this)">▼ ลง</button>
+      </div>
+    </div>
+    <input class="po-search" id="priceSearch" placeholder="🔍 ค้นหา Supplier / Part No. / Part Name..." oninput="filterPrice(null,null)">
+    <div class="scrolltable"><table>
+      <thead><tr>
+        <th>Pro.Family</th><th>Supplier</th><th>Part No.</th><th>Part Name</th>
+        <th class="num-r">Price 2024</th><th class="num-r">MAR Price</th>
+        <th class="num-r">เปลี่ยน</th><th class="num-r">%</th>
+      </tr></thead>
+      <tbody id="priceChgBody"></tbody>
+    </table></div>
+  </div>
+
+</div><!-- /main -->
+
+<footer class="footer">
+  PURCHASE AMOUNT MONTHLY REPORT &nbsp;|&nbsp; GROUP : AUTOMOTIVE PART &nbsp;|&nbsp;
+  Powered by SheetJS + Chart.js
+</footer>
+
+<script>
+// ================================================================
+//  SAMPLE DATA (Mar'26 hardcoded — อัปเดตเมื่อ import ไฟล์ใหม่)
+// ================================================================
+const SAMPLE = {
+  reportMonth: "March 2026",
+  prevMonth:   "February 2026",
+  months: ["Apr'25","May'25","Jun'25","Jul'25","Aug'25","Sep'25","Oct'25","Nov'25","Dec'25","Jan'26","Feb'26","Mar'26"],
+  wi:      [38.93,43.35,42.56,37.71,36.53,38.40,38.23,37.62,33.01,35.96,40.93,43.67],
+  rawmat:  [75.16,92.13,100.73,83.19,85.04,94.30,88.88,87.20,78.73,76.09,82.14,97.92],
+  comp:    [315.25,390.74,415.57,388.74,378.13,405.22,361.58,351.80,337.67,343.25,348.61,408.75],
+  totalSale:[933.0,1070.5,1138.1,1063.7,1035.2,1110.5,1036.2,1006.0,955.1,1019.6,961.0,1160.4],
+  totalPur: [592.3,722.6,763.7,705.1,689.8,737.8,684.3,649.8,622.0,633.1,640.8,744.6],
+  outsideSale:[215.1,249.5,267.0,258.7,259.5,265.5,256.2,231.1,225.7,237.4,225.1,266.1],
+  outsidePur: [163.0,196.3,204.8,195.4,190.1,199.8,195.6,173.2,172.5,177.8,169.2,194.2],
+  inhouseSale:[717.9,821.0,871.1,805.0,775.7,845.1,780.0,774.9,729.4,782.2,735.9,894.3],
+  inhousePur: [429.3,526.2,558.9,509.6,499.7,537.9,488.7,476.6,449.4,455.3,471.7,550.3],
+  outsideProfit:{
+    outside:{ salesAct:287, salesPlan:221, profitAct:56, profitPlan:28 },
+    ie:     { salesAct:237, salesPlan:187, profitAct:43, profitPlan:26 },
+    fc:     { salesAct:30,  salesPlan:24,  profitAct:4,  profitPlan:3  },
+    ss:     { salesAct:21,  salesPlan:10,  profitAct:9,  profitPlan:0  },
+  },
+  poSuppliers:[
+    {name:'SSC', amount:566792},{name:'SHC', amount:254874},
+    {name:'DSST',amount:181650},{name:'TTTW',amount:175980},
+    {name:'TSK', amount:59181}, {name:'TTTA',amount:48558},
+    {name:'TTTC',amount:35334}, {name:'KFTC',amount:15770},
+    {name:'CHI', amount:9329},  {name:'NZT', amount:9187},
+  ],
+  cpSuppliers:[
+    {name:'DSST',amount:70.04},{name:'TTTW',amount:48.96},
+    {name:'CHI', amount:38.23},{name:'KFTC',amount:35.90},
+    {name:'OGW', amount:34.95},{name:'TTTA',amount:31.44},
+    {name:'EAT', amount:28.61},{name:'TIM', amount:26.64},
+    {name:'TBAS',amount:22.69},{name:'TKT', amount:21.88},
+    {name:'SAP', amount:17.45},{name:'TSK', amount:16.78},
+  ],
+  cpTrend:{
+    'DSST':[41.77,55.06,69.70,70.79,64.87,61.06,62.94,49.77,54.82,53.31,55.57,60.88,70.04],
+    'TTTW':[36.88,36.66,45.16,48.41,42.96,44.46,47.21,45.89,41.65,39.16,40.96,41.52,48.96],
+    'CHI': [29.26,31.44,39.71,39.58,36.98,36.07,36.80,34.81,32.70,34.07,34.99,34.12,38.23],
+    'KFTC':[29.40,25.91,29.84,32.85,31.62,30.82,31.55,28.20,28.23,25.00,27.59,31.97,35.90],
+    'OGW': [36.87,29.94,41.58,42.18,35.89,34.63,35.69,37.96,30.87,28.61,33.22,29.74,34.95],
+    'TTTA':[31.07,27.83,29.98,31.48,28.94,29.41,30.02,26.30,25.93,22.47,23.35,25.21,31.44],
+  },
+  sectionSale:{IE:5473.4, SS:5473.1, FU:1542.8},
+  sectionPur: {IE:3449.7, SS:3838.9, FU:897.1},
+  // ── NEW ──
+  matSuppliers:[
+    {name:'TTTC',amount:47.13},{name:'TTTN',amount:11.91},
+    {name:'AKAT',amount:7.37}, {name:'NPT', amount:5.06},
+    {name:'TTTW',amount:4.20}, {name:'DSST',amount:3.85},
+    {name:'HTAS',amount:3.10}, {name:'SHC', amount:2.90},
+  ],
+  matTrend:{
+    'TTTC':[34.19,38.72,48.14,51.08,43.89,44.71,44.60,41.63,40.69,37.14,36.45,36.45,47.13],
+    'TTTN':[4.76, 7.26, 8.45, 9.77, 8.16, 8.48,12.52,10.41, 8.67, 8.13, 7.74, 9.66,11.91],
+    'AKAT':[0,    2.22, 2.75, 3.46, 3.54, 3.19, 4.23, 4.42, 6.60, 5.44, 6.09, 6.40, 7.37],
+    'NPT': [3.85, 5.66, 6.82, 6.65, 4.84, 4.93, 5.64, 6.31, 5.76, 4.79, 4.33, 5.11, 5.06],
+    'TTTW':[3.20, 3.15, 3.88, 4.16, 3.69, 3.82, 4.05, 3.94, 3.58, 3.37, 3.52, 3.57, 4.20],
+    'DSST':[2.90, 3.20, 3.95, 4.10, 3.80, 3.65, 3.70, 3.50, 3.30, 3.10, 3.40, 3.60, 3.85],
+  },
+  exchangeRates:{ USD:33.45, EUR:38.40, JPY:23.86 },
+  dipSuppliers:{'TGJ':45,'TGHP':18,'TTC':12,'MLCH':10,'TGHP2':8,'Other':6},
+  poOrders:[
+    {no:1, sup:'TRT',  orderNo:'2N10104134', partNo:'TG-84250-0K550-C0', partName:'581D/500D SWITCH ASSY STEERING PAD', price:619, qty:6,   amount:3714,    currency:'THB'},
+    {no:2, sup:'PCP',  orderNo:'2N10104878', partNo:'TG-GG500-00920-B',  partName:'2JA SEAL C',                         price:7000,qty:1,   amount:7000,    currency:'THB'},
+    {no:3, sup:'HTAS', orderNo:'2N10105141', partNo:'RM-00472-66203',    partName:'PP TBJ4H-MF NH-900L',                price:44,  qty:125, amount:5499,    currency:'THB'},
+    {no:4, sup:'TTTC', orderNo:'2N10105142', partNo:'RM-00502-66203',    partName:'PX10-X07 U NH900L Toray Japan',      price:130, qty:50,  amount:6480,    currency:'THB'},
+    {no:5, sup:'SSC',  orderNo:'2N10105238', partNo:'TG-GA520-15660-D',  partName:'3GJ AIR BAG ASSY AS KNEE',           price:829, qty:130, amount:107739,  currency:'THB'},
+    {no:6, sup:'SSC',  orderNo:'2N10105238', partNo:'TG-GA520-15540-C',  partName:'3GJ AIR BAG ASSY AS KNEE',           price:826, qty:20,  amount:16519,   currency:'THB'},
+    {no:7, sup:'SSC',  orderNo:'2N10105238', partNo:'TG-GA520-15540-C',  partName:'3GJ AIR BAG ASSY AS KNEE',           price:826, qty:80,  amount:66076,   currency:'THB'},
+    {no:8, sup:'SSC',  orderNo:'2N10105238', partNo:'TG-GA520-15620-C',  partName:'3GJ AIR BAG ASSY DR KNEE',           price:823, qty:130, amount:106972,  currency:'THB'},
+    {no:9, sup:'SSC',  orderNo:'2N10105238', partNo:'TG-GA520-15550-C',  partName:'3GJ AIR BAG ASSY DR KNEE',           price:823, qty:20,  amount:16457,   currency:'THB'},
+    {no:10,sup:'SSC',  orderNo:'2N10105238', partNo:'TG-GA520-15550-C',  partName:'3GJ AIR BAG ASSY DR KNEE',           price:823, qty:80,  amount:65829,   currency:'THB'},
+    {no:11,sup:'SHC',  orderNo:'2N10105344', partNo:'GA120-39360-30',    partName:'FABRIC CUT CLOTH #3',                price:96,  qty:200, amount:19244,   currency:'THB'},
+    {no:12,sup:'SHC',  orderNo:'2N10105344', partNo:'GA120-39360-40',    partName:'FABRIC CUT CLOTH #4',                price:97,  qty:200, amount:19488,   currency:'THB'},
+    {no:13,sup:'SHC',  orderNo:'2N10105344', partNo:'GA399-14740-A',     partName:'AIR BAG SUB ASSY RH',               price:270, qty:71,  amount:19171,   currency:'THB'},
+    {no:14,sup:'SHC',  orderNo:'2N10105344', partNo:'GA399-14750-A',     partName:'AIR BAG SUB ASSY LH',               price:283, qty:77,  amount:21773,   currency:'THB'},
+    {no:15,sup:'SHC',  orderNo:'2N10105344', partNo:'GA399-14740-B',     partName:'AIR BAG SUB ASSY RH',               price:220, qty:231, amount:50855,   currency:'THB'},
+    {no:16,sup:'SHC',  orderNo:'2N10105344', partNo:'GA399-14750-B',     partName:'AIR BAG SUB ASSY LH',               price:226, qty:225, amount:50843,   currency:'THB'},
+    {no:17,sup:'DSST', orderNo:'2N10105400', partNo:'GA229-14810-TG',    partName:'AIR BAG SUB-ASSY',                  price:107, qty:500, amount:53500,   currency:'THB'},
+    {no:18,sup:'DSST', orderNo:'2N10105401', partNo:'GA442-05940-TG',    partName:'BRACKET CURTAIN AIR BAG FR RH',     price:10,  qty:300, amount:3000,    currency:'THB'},
+    {no:19,sup:'TTTW', orderNo:'2N10105402', partNo:'DHN743810',         partName:'HOSE FLEXIBLE',                     price:125, qty:500, amount:62500,   currency:'THB'},
+    {no:20,sup:'TTTW', orderNo:'2N10105402', partNo:'DHN743820',         partName:'HOSE FLEXIBLE',                     price:126, qty:500, amount:63000,   currency:'THB'},
+    {no:21,sup:'TGJ',  orderNo:'2N10105456', partNo:'TG-GU229-02350-D',  partName:'3GJ AIR BAG S/A R',                price:39,  qty:100, amount:129285,  currency:'USD'},
+    {no:22,sup:'TGJ',  orderNo:'2N10105456', partNo:'TG-GU229-02010-F',  partName:'3GJ AIR BAG S/A L',                price:39,  qty:20,  amount:25642,   currency:'USD'},
+    {no:23,sup:'TTTW', orderNo:'2N10105500', partNo:'DA9L43820',         partName:'HOSE FLEXIBLE',                     price:20,  qty:200, amount:4000,    currency:'THB'},
+    {no:24,sup:'KFTC', orderNo:'2N10105338', partNo:'GU225-01750-A',     partName:'INNER TUBE S/A RH',                price:9,   qty:300, amount:2625,    currency:'THB'},
+    {no:25,sup:'KFTC', orderNo:'2N10105338', partNo:'GA423-09220-C',     partName:'AIR BAG SUB-ASSY CURTAIN RH',       price:71,  qty:70,  amount:4941,    currency:'THB'},
+    {no:26,sup:'TSK',  orderNo:'2N10105306', partNo:'TG-GA540-17260',    partName:'3GJ RETAINER COMP DR KNEE RHD',     price:257, qty:100, amount:25717,   currency:'THB'},
+    {no:27,sup:'TSK',  orderNo:'2N10105409', partNo:'TG-GA540-17260',    partName:'3GJ RETAINER COMP DR KNEE RHD',     price:257, qty:100, amount:25717,   currency:'THB'},
+    {no:28,sup:'TTTA', orderNo:'2N10105450', partNo:'B116/DHN743810',    partName:'HOSE FLEXIBLE J03EF',               price:121, qty:200, amount:24200,   currency:'THB'},
+    {no:29,sup:'ATT',  orderNo:'2N10105300', partNo:'GA229-25200',       partName:'AIR BAG SUB ASSY 640A',             price:187, qty:24,  amount:4488,    currency:'THB'},
+    {no:30,sup:'CHI',  orderNo:'2N10105521', partNo:'TG-67937-0K030-C1', partName:'581D GARNISH BACK',                price:18,  qty:10,  amount:180,     currency:'THB'},
+  ],
+  poTotal: 1099140,
+  priceChanges:[
+    {proFamily:'SS',sup:'KRT', partNo:'A442/45186-0L010-C0', partName:'COVER STEERING WHEEL LWR NO.2',  price2024:2.0,  marPrice:1.62,  change:-0.38, changePct:-19.0},
+    {proFamily:'SS',sup:'KRT', partNo:'A565/45286-02640-C0', partName:'COVER STEERING COLUMN UPR 350B', price2024:12.0, marPrice:11.0,  change:-1.0,  changePct:-8.3},
+    {proFamily:'FU',sup:'TTTA',partNo:'B116/DHN743810',      partName:'HOSE FLEXIBLE J03EF',             price2024:125.0,marPrice:121.0, change:-4.0,  changePct:-3.2},
+    {proFamily:'FU',sup:'TTTA',partNo:'B117/DHN743820',      partName:'HOSE FLEXIBLE J03EF',             price2024:126.0,marPrice:121.0, change:-5.0,  changePct:-4.0},
+    {proFamily:'SS',sup:'CHR', partNo:'AB55/GA442-05940-TG', partName:'BRACKET CURTAIN A/B INFLATOR FR', price2024:10.0, marPrice:9.5,   change:-0.5,  changePct:-5.0},
+    {proFamily:'IE',sup:'NMTH',partNo:'AB29/GS399-01560',    partName:'ALUMINUM TAPE 20X50MM',           price2024:6.0,  marPrice:6.5,   change:0.5,   changePct:8.3},
+    {proFamily:'SS',sup:'KRT', partNo:'AC64/45286-02650-C0', partName:'COVER STEERING COLUMN UPR 350B', price2024:14.0, marPrice:13.0,  change:-1.0,  changePct:-7.1},
+    {proFamily:'SS',sup:'KRT', partNo:'AC66/45287-02650-C0', partName:'COVER STEERING COLUMN LWR 350B', price2024:31.0, marPrice:29.0,  change:-2.0,  changePct:-6.5},
+    {proFamily:'FU',sup:'TPTC',partNo:'B313/77216-0D140',    partName:'SUPPORT FUEL TANK FILLER PIPE',   price2024:1.0,  marPrice:1.5,   change:0.5,   changePct:50.0},
+    {proFamily:'IE',sup:'ATH', partNo:'AC23/GS129-01530',    partName:'SNAP SPRING 588W',                price2024:1.0,  marPrice:1.2,   change:0.2,   changePct:20.0},
+  ],
+};
+
+// ================================================================
+//  EXCEL PARSER  (v2 – fixed column indices + robust checks)
+// ================================================================
+function toNum(v){
+  if(typeof v==='number'&&isFinite(v)) return v;
+  if(typeof v==='string'){ const n=parseFloat(v.replace(/,/g,'')); return isFinite(n)?n:0; }
+  return 0;
+}
+
+// ── helper: find last non-zero value in row from col start→end ──
+function lastNonZero(row, start, end){
+  for(let c=end;c>=start;c--){ const v=toNum(row[c]); if(v>0) return v; }
+  return toNum(row[start]);
+}
+
+function parseWorkbook(wb){
+  const D = {};
+  try {
+    // ══════════════════════════════════════════════════════
+    // 1. Cover Sheet → Report Month
+    // ══════════════════════════════════════════════════════
+    const cvWs = wb.Sheets['Cover Sheet'];
+    const MN_LONG=['January','February','March','April','May','June',
+                   'July','August','September','October','November','December'];
+    if(cvWs){
+      const cv = XLSX.utils.sheet_to_json(cvWs,{header:1,defval:null});
+      cv.forEach(row=>{
+        if(!row||!row[0]) return;
+        if(String(row[0]).includes('MONTH')&&row[2]){
+          let d=row[2];
+          // SheetJS returns dates as JS Date when cellDates:true
+          if(d instanceof Date && !isNaN(d)){
+            D.reportMonthDate=d;
+            D.reportMonth=MN_LONG[d.getMonth()]+' '+d.getFullYear();
+          } else if(typeof d==='number'){
+            // Excel serial date fallback
+            const js=new Date(Math.round((d-25569)*86400*1000));
+            D.reportMonthDate=js;
+            D.reportMonth=MN_LONG[js.getMonth()]+' '+js.getFullYear();
+          } else if(typeof d==='string'&&d.length>=6){
+            D.reportMonth=d;
+          }
+        }
+      });
+    }
+
+    // Determine FY month index (APR=0 … MAR=11) from report date
+    let fyMonthIdx=11; // default MAR
+    if(D.reportMonthDate){
+      const mo=D.reportMonthDate.getMonth(); // 0=Jan…11=Dec
+      fyMonthIdx = mo>=3 ? mo-3 : mo+9;     // APR=0, MAR=11
+    }
+
+    // ══════════════════════════════════════════════════════
+    // 2. Sum Data – monthly purchase/sale breakdown
+    // ══════════════════════════════════════════════════════
+    const sumWs = wb.Sheets['Sum Data'];
+    if(!sumWs) throw 'No Sum Data sheet';
+    // Use {raw:false} so numbers stay numbers (avoids formula→string issues)
+    const sum = XLSX.utils.sheet_to_json(sumWs,{header:1,defval:null,raw:false});
+
+    D.wi=[]; D.rawmat=[]; D.comp=[];
+    D.outsideSale=[]; D.outsidePur=[];
+    D.inhouseSale=[]; D.inhousePur=[];
+    D.totalSale=[];   D.totalPur=[];
+
+    let anchorIdx=-1;
+    sum.forEach((row,idx)=>{
+      if(!row) return;
+      const r=row;
+      // cols 6-17 = APR…MAR monthly values (in THB) → convert to M THB
+      const get12=()=>{ const a=[];for(let c=6;c<=17;c++) a.push(toNum(r[c])/1e6); return a; };
+
+      const c2=String(r[2]||''), c3=String(r[3]||''), c4=String(r[4]||'');
+
+      // WI Total Amount
+      if(c2==='WI'&&c3==='Total'&&c4==='Amount') D.wi=get12();
+
+      // Raw Material – "Law\nMat'L" or similar → check stripped
+      if(c3==='Total'&&c4==='Amount'&&c2.replace(/[\s\n\r]/g,'').toLowerCase().includes('matl'))
+        D.rawmat=get12();
+
+      // Component Total Amount
+      if(c2==='COM.'&&c3==='Total'&&c4==='Amount') D.comp=get12();
+
+      // Sale & Purchase anchor row
+      if(String(r[0]||'').includes('Sale & Purchase')){ anchorIdx=idx; }
+      if(anchorIdx>=0){
+        if(idx===anchorIdx)    D.outsideSale=get12();  // +0
+        if(idx===anchorIdx+1)  D.outsidePur =get12();  // +1
+        if(idx===anchorIdx+7)  D.inhouseSale=get12();  // +7
+        if(idx===anchorIdx+8)  D.inhousePur =get12();  // +8
+        if(idx===anchorIdx+14) D.totalSale  =get12();  // +14
+        if(idx===anchorIdx+15) D.totalPur   =get12();  // +15
+      }
+    });
+
+    // Section Sale/Pur annual totals (rows ~57-65)
+    D.sectionSale={IE:0,SS:0,FU:0}; D.sectionPur={IE:0,SS:0,FU:0};
+    sum.forEach(row=>{
+      if(!row) return;
+      const sumOf=r=>{ let s=0; for(let c=6;c<=17;c++) s+=toNum(r[c]); return parseFloat((s/1e6).toFixed(1)); };
+      const c4=String(row[4]||''), c5=String(row[5]||'');
+      if(c4==='IE'&&c5==='Sale'   &&toNum(row[6])>0) D.sectionSale.IE=sumOf(row);
+      if(c4==='SS'&&c5==='Sale'   &&toNum(row[6])>0) D.sectionSale.SS=sumOf(row);
+      if(c4==='FU'&&c5==='Sale'   &&toNum(row[6])>0) D.sectionSale.FU=sumOf(row);
+      if(c4==='IE'&&c5==='Purchase'&&toNum(row[6])>0) D.sectionPur.IE=sumOf(row);
+      if(c4==='SS'&&c5==='Purchase'&&toNum(row[6])>0) D.sectionPur.SS=sumOf(row);
+      if(c4==='FU'&&c5==='Purchase'&&toNum(row[6])>0) D.sectionPur.FU=sumOf(row);
+    });
+
+    // ══════════════════════════════════════════════════════
+    // 3. Outside Profit vs Plan
+    // ══════════════════════════════════════════════════════
+    const outerName=wb.SheetNames.find(n=>n.toLowerCase().includes('outside'));
+    D.outsideProfit={outside:{},ie:{},fc:{},ss:{}};
+    if(outerName){
+      const os=XLSX.utils.sheet_to_json(wb.Sheets[outerName],{header:1,defval:null,raw:false});
+      let lastSec=''; // track current section
+      os.forEach(row=>{
+        if(!row) return;
+        const c1=String(row[1]||'').trim(), c2=String(row[2]||'').trim();
+        const c4=String(row[4]||'').trim();
+        const act=toNum(row[6]), plan=toNum(row[8]);
+        if(act===0&&plan===0) return;
+
+        if(c1==='Outside') lastSec='outside';
+        if(c2==='IE')      lastSec='ie';
+        if(c2==='FC')      lastSec='fc';
+        if(c2==='SS')      lastSec='ss';
+
+        const sec=D.outsideProfit[lastSec]||{};
+        if(c4==='Sales'){ sec.salesAct=act; sec.salesPlan=plan; }
+        if(c4==='Profit'){ sec.profitAct=act; sec.profitPlan=plan; }
+        D.outsideProfit[lastSec]=sec;
+      });
+    }
+
+    // ══════════════════════════════════════════════════════
+    // 4. Cover Sheet – PO Suppliers (col 15=rank, 16=name, 17=THB)
+    // ══════════════════════════════════════════════════════
+    D.poSuppliers=[];
+    if(cvWs){
+      const cv=XLSX.utils.sheet_to_json(cvWs,{header:1,defval:null,raw:false});
+      cv.forEach(row=>{
+        if(!row) return;
+        const rank=toNum(row[15]), name=row[16], amt=toNum(row[17]);
+        if(rank>=1&&rank<=40&&name&&typeof name==='string'&&amt>0)
+          D.poSuppliers.push({name:name.trim(),amount:amt});
+      });
+      D.poSuppliers.sort((a,b)=>b.amount-a.amount);
+    }
+
+    // ══════════════════════════════════════════════════════
+    // 5. Trend CP – Component supplier trends
+    //    Structure: col0=rank, col1=supplier, col2=Apr'25…col13=Mar'26
+    // ══════════════════════════════════════════════════════
+    D.cpSuppliers=[]; D.cpTrend={};
+    const trendWs=wb.Sheets['Trend CP'];
+    if(trendWs){
+      const tr=XLSX.utils.sheet_to_json(trendWs,{header:1,defval:null,raw:false});
+      tr.forEach(row=>{
+        if(!row) return;
+        const rank=toNum(row[0]);
+        if(rank>=1&&rank<=100&&row[1]&&String(row[1]).trim()){
+          const sup=String(row[1]).trim();
+          // col 2 = Apr'25 (FY start), col 13 = Mar'26 (current month)
+          const monthly=[]; for(let c=2;c<=13;c++) monthly.push(toNum(row[c])/1e6);
+          const marAmt=toNum(row[2+fyMonthIdx])/1e6;  // dynamic: current month
+          if(marAmt>0){
+            D.cpSuppliers.push({name:sup,amount:parseFloat(marAmt.toFixed(2)),monthly});
+          }
+        }
+      });
+      D.cpSuppliers.sort((a,b)=>b.amount-a.amount);
+      // Build trend for top 6 AFTER sorting
+      D.cpSuppliers.slice(0,6).forEach(s=>{ D.cpTrend[s.name]=s.monthly; });
+    }
+
+    // ══════════════════════════════════════════════════════
+    // 6. Trend Mat'l – Raw Material supplier trends
+    //    Same structure as Trend CP
+    // ══════════════════════════════════════════════════════
+    D.matSuppliers=[]; D.matTrend={};
+    const matWs=wb.Sheets["Trend Mat'l"];
+    if(matWs){
+      const mat=XLSX.utils.sheet_to_json(matWs,{header:1,defval:null,raw:false});
+      mat.forEach(row=>{
+        if(!row) return;
+        const rank=toNum(row[0]);
+        if(rank>=1&&rank<=100&&row[1]&&String(row[1]).trim()){
+          const sup=String(row[1]).trim();
+          const monthly=[]; for(let c=2;c<=13;c++) monthly.push(toNum(row[c])/1e6);
+          const marAmt=toNum(row[2+fyMonthIdx])/1e6;
+          if(marAmt>0){
+            D.matSuppliers.push({name:sup,amount:parseFloat(marAmt.toFixed(2)),monthly});
+          }
+        }
+      });
+      D.matSuppliers.sort((a,b)=>b.amount-a.amount);
+      D.matSuppliers.slice(0,6).forEach(s=>{ D.matTrend[s.name]=s.monthly; });
+    }
+
+    // ══════════════════════════════════════════════════════
+    // 7. Monthly - PO  (Trial & Sample orders)
+    //    col0=No, col1=SUP, col2=ORDER_NO, col3=PART_NO,
+    //    col4=PART_NAME, col5=Price, col6=Qty, col7=Amount, col8=Currency
+    // ══════════════════════════════════════════════════════
+    D.poOrders=[]; D.poTotal=0;
+    const poWs2=wb.Sheets['Monthly - PO'];
+    if(poWs2){
+      const po=XLSX.utils.sheet_to_json(poWs2,{header:1,defval:null,raw:false});
+      po.forEach(row=>{
+        if(!row) return;
+        const no=toNum(row[0]);
+        if(no>=1&&row[1]&&String(row[1]).trim()){
+          const amt=toNum(row[7]);
+          const cur=String(row[8]||'THB').trim()||'THB';
+          D.poOrders.push({
+            no, sup:String(row[1]).trim(),
+            orderNo:String(row[2]||'').trim(),
+            partNo:String(row[3]||'').trim(),
+            partName:String(row[4]||'').trim(),
+            price:toNum(row[5]), qty:toNum(row[6]),
+            amount:amt, currency:cur
+          });
+          if(cur==='THB') D.poTotal+=amt;
+        }
+      });
+    }
+
+    // ══════════════════════════════════════════════════════
+    // 8. Direct IP – Exchange Rate + Supplier summary
+    //    Exchange rate rows: col20=TYPE (US/EUP/JPY), col21=APR…col32=MAR
+    //    Supplier rows: col3=SUP (start from row idx>=9)
+    // ══════════════════════════════════════════════════════
+    D.exchangeRates={USD:0,EUR:0,JPY:0}; D.dipSuppliers={};
+    const dipWs=wb.Sheets['Monthly - Direct IP'];
+    if(dipWs){
+      const dip=XLSX.utils.sheet_to_json(dipWs,{header:1,defval:null,raw:false});
+      const fxCol=21+fyMonthIdx; // APR=col21…MAR=col32 for current month
+      const SKIP_SUP=new Set(['SUP','MODEL','GROUP','Pro.Family','TYPE',
+                              'Mix','INT. CODE','Part Discrip','PART NAME','']);
+      dip.forEach((row,idx)=>{
+        if(!row) return;
+        // Exchange rate rows (idx 3-5): col20=type
+        const t=String(row[20]||'').trim();
+        if(t==='US'||t==='USD')       D.exchangeRates.USD=toNum(row[fxCol])||toNum(row[21]);
+        else if(t==='EUP'||t==='EUR') D.exchangeRates.EUR=toNum(row[fxCol])||toNum(row[21]);
+        else if(t==='JPY')             D.exchangeRates.JPY=toNum(row[fxCol])||toNum(row[21]);
+
+        // Supplier count (data rows only)
+        if(idx>=9&&row[0]&&!SKIP_SUP.has(String(row[3]||'').trim())){
+          const sup=String(row[3]||'').trim();
+          if(sup) D.dipSuppliers[sup]=(D.dipSuppliers[sup]||0)+1;
+        }
+      });
+    }
+
+    // ══════════════════════════════════════════════════════
+    // 9. Monthly Local – Price changes (unit price comparison)
+    //    Structure:
+    //    col9        = Price 2024 (reference unit price)
+    //    col10-21    = FY2024 monthly unit prices (APR'24-MAR'25)
+    //    col22-33    = FY2025 quantities (APR'25-MAR'26)
+    //    col34-45    = FY2025 amounts THB (APR'25-MAR'26)
+    //
+    //    Price compare: col9 (ref) vs col21 (latest known price = MAR'25)
+    //    Current month amount: col 34+fyMonthIdx (e.g. MAR'26 = col45)
+    // ══════════════════════════════════════════════════════
+    D.priceChanges=[];
+    const localWs2=wb.Sheets['Monthly- Local'];
+    if(localWs2){
+      const local=XLSX.utils.sheet_to_json(localWs2,{header:1,defval:null,raw:false});
+      const amtCol=34+fyMonthIdx;  // current month amount column (MAR'26 = col45)
+      local.forEach((row,idx)=>{
+        if(idx<4||!row) return;
+        const pf=String(row[0]||'').trim();
+        if(!pf||pf==='Pro.Family'||pf==='GROUP') return;
+        const p24=toNum(row[9]);    // Price 2024
+        const pMar=toNum(row[21]);  // MAR'25 = latest unit price in the price section
+        if(p24>0&&pMar>0&&Math.abs(pMar-p24)>0.001){
+          D.priceChanges.push({
+            proFamily:pf,
+            sup:String(row[4]||'').trim(),
+            partNo:String(row[7]||'').trim(),
+            partName:String(row[8]||'').trim(),
+            price2024:p24, marPrice:pMar,
+            change:pMar-p24,
+            changePct:((pMar-p24)/p24*100)
+          });
+        }
+      });
+      D.priceChanges.sort((a,b)=>Math.abs(b.changePct)-Math.abs(a.changePct));
+    }
+
+    // ══════════════════════════════════════════════════════
+    // 10. Derive month labels & previous month name
+    // ══════════════════════════════════════════════════════
+    const MNAME=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    if(D.reportMonthDate){
+      const labels=[];
+      for(let i=0;i<12;i++){
+        const d=new Date(D.reportMonthDate.getTime());
+        d.setMonth(d.getMonth()-11+i);
+        labels.push(MNAME[d.getMonth()]+"'"+(d.getFullYear()%100).toString().padStart(2,'0'));
+      }
+      D.months=labels;
+      const prev=new Date(D.reportMonthDate.getTime());
+      prev.setMonth(prev.getMonth()-1);
+      D.prevMonth=MN_LONG[prev.getMonth()]+' '+prev.getFullYear();
+    } else {
+      D.months=SAMPLE.months;
+      D.prevMonth='February 2026';
+    }
+
+    console.log('[Parser] Done:',{
+      month:D.reportMonth, wi:D.wi?.length, comp:D.comp?.length,
+      totalSale:D.totalSale?.slice(-1), totalPur:D.totalPur?.slice(-1),
+      cpSuppliers:D.cpSuppliers?.length, matSuppliers:D.matSuppliers?.length,
+      poOrders:D.poOrders?.length, priceChanges:D.priceChanges?.length,
+      fx:D.exchangeRates
+    });
+    return D;
+  } catch(e){
+    console.error('[Parser] Error:',e);
+    return null;
+  }
+}
+
+// ================================================================
+//  CHARTS (store refs so we can destroy/recreate)
+// ================================================================
+const CHARTS={};
+const GRID='rgba(48,54,61,.55)';
+Chart.defaults.color='#8b949e';
+Chart.defaults.font.family="'Segoe UI',system-ui,sans-serif";
+Chart.defaults.font.size=11;
+
+function makeChart(id,cfg){
+  if(CHARTS[id]) CHARTS[id].destroy();
+  CHARTS[id]=new Chart(document.getElementById(id),cfg);
+}
+
+// ================================================================
+//  GLOBAL SAFE NUMBER HELPERS (accessible from any function)
+// ================================================================
+function _n(v){ const x=parseFloat(v); return isFinite(x)?x:0; }
+function _f1(v){ return _n(v).toFixed(1); }
+function _f2(v){ return _n(v).toFixed(2); }
+
+// ================================================================
+//  RENDER DASHBOARD
+// ================================================================
+function render(D){
+  // ── Safe helpers (local aliases of globals) ───────────────────
+  const safeArr=(a,fb)=>(Array.isArray(a)&&a.length===12)?a:fb;
+  const n=_n, f1=_f1, f2=_f2;
+  const chg=(c,p)=>{ c=n(c);p=n(p); return{val:c-p,pct:p===0?0:((c-p)/p*100)}; };
+
+  const wi=safeArr(D.wi,SAMPLE.wi);
+  const rm=safeArr(D.rawmat,SAMPLE.rawmat);
+  const cp=safeArr(D.comp,SAMPLE.comp);
+  const ts=safeArr(D.totalSale,SAMPLE.totalSale);
+  const tp=safeArr(D.totalPur,SAMPLE.totalPur);
+  const os=safeArr(D.outsideSale,SAMPLE.outsideSale);
+  const op=D.outsideProfit||SAMPLE.outsideProfit;
+
+  const cur=11; // index ของเดือนปัจจุบัน (ตำแหน่งสุดท้าย)
+  const prev=10;
+
+  // ── Badge/labels ──
+  document.getElementById('badgeMonth').textContent = D.reportMonth||SAMPLE.reportMonth;
+  document.getElementById('kpiMonthLabel').textContent = D.reportMonth||SAMPLE.reportMonth;
+  document.getElementById('momSubLabel').textContent =
+    `${D.reportMonth||SAMPLE.reportMonth} vs ${D.prevMonth||SAMPLE.prevMonth}`;
+  document.getElementById('profitSubLabel').textContent = D.reportMonth||SAMPLE.reportMonth;
+
+  // ── KPI CARDS ──
+  const kpis=[
+    { label:'Total Purchase (เดือนนี้)', val:n(tp[cur]), prev:n(tp[prev]), unit:'M THB', cls:'kpi-blue',
+      sub:'Annual: '+f1(tp.reduce((a,b)=>n(a)+n(b),0))+' M' },
+    { label:'Total Sale (เดือนนี้)',    val:n(ts[cur]), prev:n(ts[prev]), unit:'M THB', cls:'kpi-green',
+      sub:'Annual: '+f1(ts.reduce((a,b)=>n(a)+n(b),0))+' M' },
+    { label:'Component (เดือนนี้)',     val:n(cp[cur]), prev:n(cp[prev]), unit:'M THB', cls:'kpi-orange', sub:'หมวดใหญ่สุด' },
+    { label:'Raw Material (เดือนนี้)', val:n(rm[cur]), prev:n(rm[prev]), unit:'M THB', cls:'kpi-purple', sub:'' },
+    { label:'WI (เดือนนี้)',            val:n(wi[cur]), prev:n(wi[prev]), unit:'M THB', cls:'kpi-cyan',   sub:'' },
+    { label:'Outside Sale vs Plan',     val:n(os[cur]), prev:n(op.outside?.salesPlan), unit:'M THB', cls:'kpi-yellow',
+      sub:`Plan: ${n(op.outside?.salesPlan)||'N/A'} M`, isVsPlan:true },
+  ];
+
+  document.getElementById('kpiGrid').innerHTML = kpis.map(k=>{
+    const c=chg(k.val,k.prev);
+    const up=c.val>=0;
+    return `<div class="kpi-card ${k.cls}">
+      <div class="kpi-label">${k.label}</div>
+      <div class="kpi-value">${f1(k.val)}<span class="kpi-unit">${k.unit}</span></div>
+      <div class="kpi-change ${up?'change-up':'change-dn'}">
+        <span class="arrow">${up?'▲':'▼'}</span>
+        <span>${f1(Math.abs(c.val))} M (${f1(Math.abs(c.pct))}%)</span>
+        <span class="change-label">${k.isVsPlan?'vs Plan':'vs เดือนก่อน'}</span>
+      </div>
+      ${k.sub?`<div style="font-size:.68rem;color:var(--muted);margin-top:4px">${k.sub}</div>`:''}
+    </div>`;
+  }).join('');
+
+  // ── MOM TABLE ──
+  const op_arr=(key)=>safeArr(D[key],SAMPLE[key]);
+  const momRows=[
+    { label:'Total Purchase',    cur:n(tp[cur]), prev:n(tp[prev]) },
+    { label:'Total Sale',        cur:n(ts[cur]), prev:n(ts[prev]) },
+    { label:'Component',         cur:n(cp[cur]), prev:n(cp[prev]) },
+    { label:'Raw Material',      cur:n(rm[cur]), prev:n(rm[prev]) },
+    { label:'WI',                cur:n(wi[cur]), prev:n(wi[prev]) },
+    { label:'Outside Sale',      cur:n(os[cur]), prev:n(os[prev]) },
+    { label:'Outside Purchase',  cur:n(op_arr('outsidePur')[cur]),  prev:n(op_arr('outsidePur')[prev]) },
+    { label:'In-House Sale',     cur:n(op_arr('inhouseSale')[cur]), prev:n(op_arr('inhouseSale')[prev]) },
+    { label:'In-House Purchase', cur:n(op_arr('inhousePur')[cur]),  prev:n(op_arr('inhousePur')[prev]) },
+  ];
+
+  document.getElementById('momBody').innerHTML = momRows.map(r=>{
+    const c=chg(r.cur,r.prev);
+    const up=c.val>=0;
+    const tag=Math.abs(c.pct)<0.1?
+      `<span class="tag tag-neu">= เท่าเดิม</span>`:
+      up?`<span class="tag tag-up">▲ เพิ่ม ${f1(c.pct)}%</span>`
+        :`<span class="tag tag-dn">▼ ลด ${f1(Math.abs(c.pct))}%</span>`;
+    return `<tr>
+      <td>${r.label}</td>
+      <td class="num-r">${f1(r.prev)}</td>
+      <td class="num-r" style="font-weight:600">${f1(r.cur)}</td>
+      <td class="num-r" style="color:${up?'var(--green)':'var(--red)'};font-weight:600">
+        ${up?'+':''}${f1(c.val)}
+      </td>
+      <td class="num-r" style="color:${up?'var(--green)':'var(--red)'}">
+        ${up?'+':''}${f1(c.pct)}%
+      </td>
+      <td>${tag}</td>
+    </tr>`;
+  }).join('');
+
+  // ── CHARTS ──
+  const labels = D.months||SAMPLE.months;
+  const cpTrend = D.cpTrend||SAMPLE.cpTrend;
+  const cpSup   = D.cpSuppliers||SAMPLE.cpSuppliers;
+  const poSup   = D.poSuppliers||SAMPLE.poSuppliers;
+
+  // 1. Trend stacked bar
+  makeChart('trendChart',{
+    type:'bar',
+    data:{labels, datasets:[
+      {label:'Component', data:cp, backgroundColor:'rgba(88,166,255,.75)', stack:'s', borderRadius:2},
+      {label:'Raw Material', data:rm, backgroundColor:'rgba(63,185,80,.75)', stack:'s', borderRadius:2},
+      {label:'WI', data:wi, backgroundColor:'rgba(163,113,247,.75)', stack:'s', borderRadius:2},
+    ]},
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      interaction:{mode:'index',intersect:false},
+      plugins:{
+        legend:{position:'top',labels:{usePointStyle:true,pointStyle:'circle',padding:14}},
+        tooltip:{callbacks:{
+          label:c=>` ${c.dataset.label}: ${_f1(c.raw)} M`,
+          footer:items=>`Total: ${_f1(items.reduce((s,i)=>s+_n(i.raw),0))} M THB`,
+        }},
+      },
+      scales:{
+        x:{grid:{color:GRID},ticks:{maxRotation:45}},
+        y:{grid:{color:GRID},ticks:{callback:v=>v+' M'},stacked:true},
+      },
+    },
+  });
+
+  // 2. Sale vs Purchase line
+  makeChart('salePurChart',{
+    type:'line',
+    data:{labels, datasets:[
+      {label:'Total Sale', data:ts, borderColor:'#3fb950', backgroundColor:'rgba(63,185,80,.1)',
+       borderWidth:2.5, pointRadius:3, tension:.35, fill:true},
+      {label:'Total Purchase', data:tp, borderColor:'#58a6ff', backgroundColor:'rgba(88,166,255,.08)',
+       borderWidth:2.5, pointRadius:3, tension:.35, fill:true},
+    ]},
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      interaction:{mode:'index',intersect:false},
+      plugins:{
+        legend:{position:'top',labels:{usePointStyle:true,pointStyle:'circle'}},
+        tooltip:{callbacks:{label:c=>` ${c.dataset.label}: ${_f1(c.raw)} M`}},
+      },
+      scales:{
+        x:{grid:{color:GRID},ticks:{maxRotation:45}},
+        y:{grid:{color:GRID},ticks:{callback:v=>v+' M'},min:300},
+      },
+    },
+  });
+
+  // 3. Channel donut
+  const oS=(D.outsideSale||SAMPLE.outsideSale)[cur];
+  const oP=(D.outsidePur||SAMPLE.outsidePur)[cur];
+  const iS=(D.inhouseSale||SAMPLE.inhouseSale)[cur];
+  const iP=(D.inhousePur||SAMPLE.inhousePur)[cur];
+  makeChart('channelChart',{
+    type:'doughnut',
+    data:{
+      labels:['Outside Sale','Outside Purchase','In-House Sale','In-House Purchase'],
+      datasets:[{
+        data:[n(oS),n(oP),n(iS),n(iP)],
+        backgroundColor:['rgba(63,185,80,.8)','rgba(63,185,80,.3)','rgba(88,166,255,.8)','rgba(88,166,255,.3)'],
+        borderColor:['#3fb950','#3fb950','#58a6ff','#58a6ff'],
+        borderWidth:2,
+      }],
+    },
+    options:{
+      responsive:true, maintainAspectRatio:false, cutout:'62%',
+      plugins:{
+        legend:{position:'bottom',labels:{usePointStyle:true,pointStyle:'circle',padding:10,font:{size:10}}},
+        tooltip:{callbacks:{label:c=>` ${c.label}: ${c.raw} M THB`}},
+      },
+    },
+  });
+
+  // 4. Profit chart
+  makeChart('profitChart',{
+    type:'bar',
+    data:{
+      labels:['Outside','IE','FC','SS'],
+      datasets:[
+        {label:'Actual Sales', data:[op.outside?.salesAct||0,op.ie?.salesAct||0,op.fc?.salesAct||0,op.ss?.salesAct||0],
+         backgroundColor:'rgba(88,166,255,.85)', borderRadius:5},
+        {label:'Plan Sales',   data:[op.outside?.salesPlan||0,op.ie?.salesPlan||0,op.fc?.salesPlan||0,op.ss?.salesPlan||0],
+         backgroundColor:'rgba(88,166,255,.25)', borderRadius:5},
+        {label:'Actual Profit',data:[op.outside?.profitAct||0,op.ie?.profitAct||0,op.fc?.profitAct||0,op.ss?.profitAct||0],
+         backgroundColor:'rgba(63,185,80,.85)', borderRadius:5},
+        {label:'Plan Profit',  data:[op.outside?.profitPlan||0,op.ie?.profitPlan||0,op.fc?.profitPlan||0,op.ss?.profitPlan||0],
+         backgroundColor:'rgba(63,185,80,.25)', borderRadius:5},
+      ],
+    },
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      interaction:{mode:'index',intersect:false},
+      plugins:{
+        legend:{position:'bottom',labels:{usePointStyle:true,padding:8,font:{size:10}}},
+        tooltip:{callbacks:{label:c=>` ${c.dataset.label}: ${c.raw} M`}},
+      },
+      scales:{
+        x:{grid:{color:GRID}},
+        y:{grid:{color:GRID},ticks:{callback:v=>v+' M'}},
+      },
+    },
+  });
+
+  // 5. CP Trend
+  const cpColors=['#58a6ff','#3fb950','#f0883e','#a371f7','#39d3f5','#f85149'];
+  const cpMonths=["2024Avg",...labels];
+  makeChart('cpTrendChart',{
+    type:'line',
+    data:{
+      labels:cpMonths,
+      datasets:Object.entries(cpTrend).slice(0,6).map(([name,data],i)=>({
+        label:name, data:data,
+        borderColor:cpColors[i], backgroundColor:cpColors[i]+'20',
+        borderWidth:2, pointRadius:3, tension:.3, fill:false,
+      })),
+    },
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      interaction:{mode:'index',intersect:false},
+      plugins:{
+        legend:{position:'top',labels:{usePointStyle:true,pointStyle:'circle',padding:14}},
+        tooltip:{callbacks:{label:c=>` ${c.dataset.label}: ${_f1(c.raw)} M`}},
+      },
+      scales:{
+        x:{grid:{color:GRID}},
+        y:{grid:{color:GRID},ticks:{callback:v=>v+' M'}},
+      },
+    },
+  });
+
+  // 6. Section charts
+  const secSale=D.sectionSale||SAMPLE.sectionSale;
+  const secPur =D.sectionPur ||SAMPLE.sectionPur;
+  const barCfg=(data,label)=>({
+    type:'bar',
+    data:{
+      labels:['IE Section','SS Section','FU Section'],
+      datasets:[{label, data:[data.IE,data.SS,data.FU],
+        backgroundColor:['rgba(88,166,255,.8)','rgba(163,113,247,.8)','rgba(240,136,62,.8)'],
+        borderRadius:6,
+      }],
+    },
+    options:{
+      indexAxis:'y', responsive:true, maintainAspectRatio:false,
+      plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>` ${_f1(c.raw)} M THB`}}},
+      scales:{
+        x:{grid:{color:GRID},ticks:{callback:v=>v+' M'}},
+        y:{grid:{color:GRID}},
+      },
+    },
+  });
+  makeChart('secSaleChart',barCfg(secSale,'Annual Sale'));
+  makeChart('secPurChart', barCfg(secPur, 'Annual Purchase'));
+
+  // ── RAW MATERIAL TREND ──
+  const matSup  = D.matSuppliers||SAMPLE.matSuppliers;
+  const matTrend= D.matTrend   ||SAMPLE.matTrend;
+  const matColors=['#e3b341','#f0883e','#3fb950','#a371f7','#39d3f5','#f85149'];
+  const cpMonths2=["2024Avg",...labels];
+  makeChart('matTrendChart',{
+    type:'line',
+    data:{labels:cpMonths2,
+      datasets:Object.entries(matTrend).slice(0,6).map(([name,data],i)=>({
+        label:name,data,borderColor:matColors[i],backgroundColor:matColors[i]+'20',
+        borderWidth:2,pointRadius:3,tension:.3,fill:false,
+      }))},
+    options:{responsive:true,maintainAspectRatio:false,
+      interaction:{mode:'index',intersect:false},
+      plugins:{legend:{position:'top',labels:{usePointStyle:true,pointStyle:'circle',padding:14}},
+        tooltip:{callbacks:{label:c=>` ${c.dataset.label}: ${_f2(c.raw)} M`}}},
+      scales:{x:{grid:{color:GRID}},y:{grid:{color:GRID},ticks:{callback:v=>v+' M'}}}}});
+  buildSup('matBody', matSup.filter(s=>s.amount>0), true);
+
+  // ── EXCHANGE RATE ──
+  const fx=D.exchangeRates||SAMPLE.exchangeRates;
+  document.getElementById('fxUSD').textContent = fx.USD ? fx.USD.toFixed(4) : '–';
+  document.getElementById('fxEUR').textContent = fx.EUR ? fx.EUR.toFixed(4) : '–';
+  document.getElementById('fxJPY').textContent = fx.JPY ? (fx.JPY/100).toFixed(4) : '–';
+  document.getElementById('fxSubLabel').textContent = D.reportMonth||SAMPLE.reportMonth;
+
+  // Direct IP supplier donut
+  const dipSup=D.dipSuppliers||SAMPLE.dipSuppliers;
+  const dipEntries=Object.entries(dipSup).sort((a,b)=>b[1]-a[1]).slice(0,8);
+  makeChart('dipChart',{type:'doughnut',
+    data:{labels:dipEntries.map(e=>e[0]),
+      datasets:[{data:dipEntries.map(e=>e[1]),
+        backgroundColor:['#58a6ff','#3fb950','#f0883e','#a371f7','#39d3f5','#f85149','#e3b341','#30363d'],
+        borderColor:'#161b22',borderWidth:2}]},
+    options:{responsive:true,maintainAspectRatio:false,cutout:'55%',
+      plugins:{legend:{position:'right',labels:{usePointStyle:true,padding:8,font:{size:10}}},
+        tooltip:{callbacks:{label:c=>` ${c.label}: ${c.raw} parts`}}}}});
+
+  // ── PO DETAIL TABLE ──
+  const orders=D.poOrders||SAMPLE.poOrders;
+  const poTot=D.poTotal||SAMPLE.poTotal;
+  document.getElementById('poCountLabel').textContent=orders.length;
+  document.getElementById('poTotalLabel').textContent=
+    'THB: '+poTot.toLocaleString('th-TH',{maximumFractionDigits:0});
+  // currency filter buttons
+  const currencies=[...new Set(orders.map(o=>o.currency))].sort();
+  window._poOrders=orders; window._poCurFilter='ALL';
+  document.getElementById('currencyFilters').innerHTML=
+    ['ALL',...currencies].map(c=>
+      `<button class="filt-btn${c==='ALL'?' active':''}" onclick="setCurFilter('${c}',this)">${c==='ALL'?'ทั้งหมด':c}</button>`
+    ).join('');
+  renderPOTable(orders);
+
+  // ── PRICE CHANGE TABLE ──
+  const pChg=D.priceChanges||SAMPLE.priceChanges;
+  window._priceChanges=pChg; window._priceDir='ALL';
+  document.getElementById('priceChgCount').textContent=pChg.length;
+  renderPriceTable(pChg);
+
+  // ── PROFIT TABLE ──
+  const profitRows=[
+    {sec:'📦 Outside', key:'outside'},
+    {sec:'🔵 IE',       key:'ie'},
+    {sec:'🟠 FC',       key:'fc'},
+    {sec:'🟣 SS',       key:'ss'},
+  ];
+  document.getElementById('profitBody').innerHTML = profitRows.map(({sec,key})=>{
+    const d=op[key]||{};
+    const sd=((d.salesAct||0)-(d.salesPlan||0)), pd=((d.profitAct||0)-(d.profitPlan||0));
+    return `
+      <tr class="section-row"><td colspan="5">${sec}</td></tr>
+      <tr>
+        <td></td><td>Sales</td>
+        <td class="num-r val-act">${d.salesAct||'N/A'} M</td>
+        <td class="num-r">${d.salesPlan||'N/A'} M</td>
+        <td class="num-r ${sd>=0?'val-pos':'val-neg'}">${sd>=0?'+':''}${sd} M</td>
+      </tr>
+      <tr>
+        <td></td><td>Profit</td>
+        <td class="num-r val-act">${d.profitAct??'N/A'} M</td>
+        <td class="num-r">${d.profitPlan??'N/A'} M</td>
+        <td class="num-r ${pd>=0?'val-pos':'val-neg'}">${pd>=0?'+':''}${pd} M</td>
+      </tr>`;
+  }).join('');
+
+  // ── SUPPLIER TABLES ──
+  function buildSup(tbodyId, suppliers, isMillion){
+    const max = suppliers[0]?.amount||1;
+    document.getElementById(tbodyId).innerHTML = suppliers.slice(0,12).map((s,i)=>{
+      const rClass=i===0?'r1':i===1?'r2':i===2?'r3':'rn';
+      const pct=n(s.amount/max*100).toFixed(0);
+      const display = isMillion ? n(s.amount).toFixed(2)+' M' : n(s.amount).toLocaleString('th-TH');
+      return `<tr>
+        <td><span class="rank ${rClass}">${i+1}</span></td>
+        <td><strong>${s.name}</strong></td>
+        <td class="num-r">${display}</td>
+        <td><span class="mini-bar"><span class="mini-bar-fill" style="width:${pct}%;background:${i<3?'var(--blue)':'#30363d'}"></span></span></td>
+      </tr>`;
+    }).join('');
+  }
+  buildSup('poBody', poSup.filter(s=>s.amount>0), false);
+  buildSup('cpBody', cpSup.filter(s=>s.amount>0), true);
+}
+
+// ================================================================
+//  PO TABLE HELPERS
+// ================================================================
+function renderPOTable(orders){
+  const q=(document.getElementById('poSearch')||{}).value||'';
+  const cur=window._poCurFilter||'ALL';
+  const filtered=orders.filter(o=>{
+    const matchCur=cur==='ALL'||o.currency===cur;
+    const matchQ=!q||[o.sup,o.partNo,o.partName,o.orderNo].some(f=>
+      String(f).toLowerCase().includes(q.toLowerCase()));
+    return matchCur&&matchQ;
+  });
+  const curClass={THB:'cur-thb',USD:'cur-usd',JPY:'cur-jpy',EUR:'cur-eur'};
+  document.getElementById('poDetailBody').innerHTML=filtered.map(o=>`
+    <tr>
+      <td>${o.no}</td>
+      <td><strong>${o.sup}</strong></td>
+      <td style="color:var(--muted);font-size:.72rem">${o.orderNo}</td>
+      <td style="font-size:.75rem">${o.partNo}</td>
+      <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${o.partName}">${o.partName}</td>
+      <td class="num-r">${o.price.toLocaleString()}</td>
+      <td class="num-r">${o.qty.toLocaleString()}</td>
+      <td class="num-r"><strong>${o.amount.toLocaleString('th-TH',{maximumFractionDigits:0})}</strong></td>
+      <td><span class="${curClass[o.currency]||''}">${o.currency}</span></td>
+    </tr>`).join('');
+}
+function setCurFilter(cur,btn){
+  window._poCurFilter=cur;
+  document.querySelectorAll('#currencyFilters .filt-btn').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  renderPOTable(window._poOrders||[]);
+}
+function filterPO(){ renderPOTable(window._poOrders||[]); }
+
+// ================================================================
+//  PRICE CHANGE TABLE HELPERS
+// ================================================================
+function renderPriceTable(data){
+  const q=(document.getElementById('priceSearch')||{}).value||'';
+  const dir=window._priceDir||'ALL';
+  const filtered=data.filter(r=>{
+    const matchDir=dir==='ALL'||(dir==='UP'&&r.change>0)||(dir==='DN'&&r.change<0);
+    const matchQ=!q||[r.sup,r.partNo,r.partName,r.proFamily].some(f=>
+      String(f).toLowerCase().includes(q.toLowerCase()));
+    return matchDir&&matchQ;
+  });
+  document.getElementById('priceChgBody').innerHTML=filtered.slice(0,100).map(r=>`
+    <tr>
+      <td><span class="badge ${r.proFamily==='IE'?'badge-blue':r.proFamily==='SS'?'badge-orange':'badge-green'}"
+          style="font-size:.65rem;padding:2px 7px">${r.proFamily}</span></td>
+      <td><strong>${r.sup}</strong></td>
+      <td style="font-size:.75rem">${r.partNo}</td>
+      <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${r.partName}">${r.partName}</td>
+      <td class="num-r">${_f2(r.price2024)}</td>
+      <td class="num-r">${_f2(r.marPrice)}</td>
+      <td class="num-r ${r.change>0?'up-price':'dn-price'}">${r.change>0?'+':''}${_f2(r.change)}</td>
+      <td class="num-r ${r.change>0?'up-price':'dn-price'}">${r.changePct>0?'+':''}${_f1(r.changePct)}%</td>
+    </tr>`).join('');
+}
+function filterPrice(dir,btn){
+  if(dir) window._priceDir=dir;
+  if(btn){
+    document.querySelectorAll('.filter-row .filt-btn').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active');
+  }
+  renderPriceTable(window._priceChanges||[]);
+}
+
+// ================================================================
+//  FILE IMPORT
+// ================================================================
+function openOverlay(){ document.getElementById('dropOverlay').classList.add('visible') }
+function closeOverlay(){ document.getElementById('dropOverlay').classList.remove('visible') }
+
+function handleFile(file){
+  if(!file) return;
+  document.getElementById('badgeFile').textContent = '⏳ กำลังอ่าน '+file.name+'...';
+  closeOverlay();
+  const reader = new FileReader();
+  reader.onload = e=>{
+    try{
+      const wb = XLSX.read(e.target.result, {type:'array', cellDates:true});
+      const parsed = parseWorkbook(wb);
+      if(parsed && (parsed.wi?.length||parsed.comp?.length)){
+        document.getElementById('badgeFile').textContent = '📄 '+file.name;
+        render(parsed);
+      } else {
+        alert('⚠️ ไม่พบข้อมูลในไฟล์ที่อัปโหลด กรุณาตรวจสอบว่าเป็นไฟล์ Monthly Report ที่ถูกต้อง');
+        document.getElementById('badgeFile').textContent = '📄 Sample Data';
+        render(SAMPLE);
+      }
+    } catch(err){
+      console.error(err);
+      alert('❌ เกิดข้อผิดพลาด: '+err.message);
+      render(SAMPLE);
+    }
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+// Drag & drop
+const overlay = document.getElementById('dropOverlay');
+const dropBox = document.getElementById('dropBox');
+overlay.addEventListener('dragover', e=>{ e.preventDefault(); dropBox.classList.add('drag-over') });
+overlay.addEventListener('dragleave', ()=>dropBox.classList.remove('drag-over'));
+overlay.addEventListener('drop', e=>{
+  e.preventDefault(); dropBox.classList.remove('drag-over');
+  handleFile(e.dataTransfer.files[0]);
+});
+// Also allow drop anywhere on the page
+document.body.addEventListener('dragover', e=>{ e.preventDefault(); openOverlay() });
+
+document.getElementById('fileInput').addEventListener('change', e=>handleFile(e.target.files[0]));
+
+// Click outside drop-box to close
+overlay.addEventListener('click', e=>{ if(e.target===overlay) closeOverlay() });
+
+// ================================================================
+//  INIT
+// ================================================================
+render(SAMPLE);
+</script>
+</body>
+</html>
