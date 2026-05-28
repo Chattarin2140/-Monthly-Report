@@ -325,7 +325,15 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
   <div class="card">
     <div class="card-hd">เปรียบเทียบเดือนปัจจุบัน vs เดือนก่อนหน้า</div>
     <div class="card-sub" id="momSubLabel">March 2026 vs February 2026</div>
-    <table class="mom-table">
+    <table class="mom-table" style="table-layout:fixed;width:100%">
+      <colgroup>
+        <col style="width:26%">
+        <col style="width:13%">
+        <col style="width:13%">
+        <col style="width:13%">
+        <col style="width:9%">
+        <col style="width:26%">
+      </colgroup>
       <thead>
         <tr>
           <th>รายการ</th>
@@ -344,7 +352,7 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
   <div class="section-title">📈 Monthly Purchase Trend – FY2025</div>
   <div class="card">
     <div class="card-hd">Purchase Amount by Category</div>
-    <div class="card-sub">Component | Raw Material | WI &nbsp;(Unit: M THB)</div>
+    <div class="card-sub">FG | Component | Raw Material | WI &nbsp;(Unit: M THB)</div>
     <div class="ch ch-280"><canvas id="trendChart"></canvas></div>
   </div>
 
@@ -523,6 +531,7 @@ const SAMPLE = {
   reportMonth: "March 2026",
   prevMonth:   "February 2026",
   months: ["Apr'25","May'25","Jun'25","Jul'25","Aug'25","Sep'25","Oct'25","Nov'25","Dec'25","Jan'26","Feb'26","Mar'26"],
+  fg:      [162.96,196.38,204.84,195.46,190.10,199.88,195.61,173.18,172.59,177.80,169.12,194.26],
   wi:      [38.93,43.35,42.56,37.71,36.53,38.40,38.23,37.62,33.01,35.96,40.93,43.67],
   rawmat:  [75.16,92.13,100.73,83.19,85.04,94.30,88.88,87.20,78.73,76.09,82.14,97.92],
   comp:    [315.25,390.74,415.57,388.74,378.13,405.22,361.58,351.80,337.67,343.25,348.61,408.75],
@@ -653,7 +662,7 @@ function parseWorkbook(wb){
                    'July','August','September','October','November','December'];
     const MN_SHORT=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
     if(cvWs){
-      const cv = XLSX.utils.sheet_to_json(cvWs,{header:1,defval:null});
+      const cv = XLSX.utils.sheet_to_json(cvWs,{header:1,defval:null,raw:false});
       cv.forEach(row=>{
         if(!row||!row[0]) return;
         if(String(row[0]).includes('MONTH')&&row[2]){
@@ -688,6 +697,7 @@ function parseWorkbook(wb){
       const mo=D.reportMonthDate.getUTCMonth(); // 0=Jan…11=Dec
       fyMonthIdx = mo>=3 ? mo-3 : mo+9;         // APR=0, MAR=11
     }
+    D.fyMonthIdx=fyMonthIdx;
 
     // ══════════════════════════════════════════════════════
     // 2. Sum Data – monthly purchase/sale breakdown
@@ -697,10 +707,27 @@ function parseWorkbook(wb){
     // Use {raw:false} so numbers stay numbers (avoids formula→string issues)
     const sum = XLSX.utils.sheet_to_json(sumWs,{header:1,defval:null,raw:false});
 
-    D.wi=[]; D.rawmat=[]; D.comp=[];
+    D.fg=[]; D.wi=[]; D.rawmat=[]; D.comp=[];
     D.outsideSale=[]; D.outsidePur=[];
     D.inhouseSale=[]; D.inhousePur=[];
     D.totalSale=[];   D.totalPur=[];
+
+    // ── FG: "PUR.FOR SALE (F/G)" — IE+SS+FU rows, no Total row exists ──
+    let fgAnchorIdx=-1;
+    sum.forEach((row,idx)=>{
+      if(!row||fgAnchorIdx>=0) return;
+      const c1=String(row[1]||'').replace(/[\s\n\r]/g,'');
+      if(c1.includes('F/G')&&String(row[3]||'').trim()==='IE'&&String(row[4]||'').trim()==='Amount')
+        fgAnchorIdx=idx;
+    });
+    if(fgAnchorIdx>=0){
+      const add12=(a,b)=>a.map((v,i)=>v+(b?.[i]||0));
+      const rowVals=ri=>{ const r2=sum[fgAnchorIdx+ri]; const a=[];
+        if(r2) for(let c=6;c<=17;c++) a.push(toNum(r2[c])/1e6);
+        else for(let c=0;c<12;c++) a.push(0);
+        return a; };
+      D.fg=add12(add12(rowVals(0),rowVals(2)),rowVals(4));
+    }
 
     let anchorIdx=-1;
     sum.forEach((row,idx)=>{
@@ -710,16 +737,9 @@ function parseWorkbook(wb){
       const get12=()=>{ const a=[];for(let c=6;c<=17;c++) a.push(toNum(r[c])/1e6); return a; };
 
       const c2=String(r[2]||''), c3=String(r[3]||''), c4=String(r[4]||'');
-
-      // WI Total Amount
-      if(c2==='WI'&&c3==='Total'&&c4==='Amount') D.wi=get12();
-
-      // Raw Material – "Law\nMat'L" or similar → check stripped
-      if(c3==='Total'&&c4==='Amount'&&c2.replace(/[\s\n\r]/g,'').toLowerCase().includes('matl'))
-        D.rawmat=get12();
-
-      // Component Total Amount
-      if(c2==='COM.'&&c3==='Total'&&c4==='Amount') D.comp=get12();
+      if(!D.wi.length     && c2==='WI'   && c3==='Total'&&c4==='Amount') D.wi    =get12();
+      if(!D.rawmat.length && c3==='Total'&& c4==='Amount'&&c2.replace(/[\s\n\r']/g,'').toLowerCase().includes('matl')) D.rawmat=get12();
+      if(!D.comp.length   && c2==='COM.' && c3==='Total'&&c4==='Amount') D.comp  =get12();
 
       // Sale & Purchase anchor row
       if(String(r[0]||'').includes('Sale & Purchase')){ anchorIdx=idx; }
@@ -910,24 +930,26 @@ function parseWorkbook(wb){
     const localWs2=wb.Sheets['Monthly- Local'];
     if(localWs2){
       const local=XLSX.utils.sheet_to_json(localWs2,{header:1,defval:null,raw:false});
-      const amtCol=34+fyMonthIdx;  // current month amount column (MAR'26 = col45)
+      const priceCol=10+fyMonthIdx;  // current month unit price col (APR=10 … MAR=21)
       local.forEach((row,idx)=>{
         if(idx<4||!row) return;
         const pf=String(row[0]||'').trim();
         if(!pf||pf==='Pro.Family'||pf==='GROUP') return;
-        const p24=toNum(row[9]);    // Price 2024
-        const pMar=toNum(row[21]);  // MAR'25 = latest unit price in the price section
-        if(p24>0&&pMar>0&&Math.abs(pMar-p24)>0.001){
-          D.priceChanges.push({
-            proFamily:pf,
-            sup:String(row[4]||'').trim(),
-            partNo:String(row[7]||'').trim(),
-            partName:String(row[8]||'').trim(),
-            price2024:p24, marPrice:pMar,
-            change:pMar-p24,
-            changePct:((pMar-p24)/p24*100)
-          });
-        }
+        const p24 =toNum(row[9]);          // Price 2024 (reference)
+        const pCur=toNum(row[priceCol]);   // current month unit price
+        // skip: no price, no change, or p24 is clearly a placeholder (< 5% of current price)
+        if(p24<0.5||pCur<=0) return;                    // skip near-zero placeholder prices
+        if(Math.abs(pCur-p24)<=0.001) return;
+        if(p24 < pCur*0.20 || p24 > pCur*5) return;  // sanity: max ~400% up or 80% down
+        D.priceChanges.push({
+          proFamily:pf,
+          sup:String(row[4]||'').trim(),
+          partNo:String(row[7]||'').trim(),
+          partName:String(row[8]||'').trim(),
+          price2024:p24, marPrice:pCur,
+          change:pCur-p24,
+          changePct:((pCur-p24)/p24*100)
+        });
       });
       D.priceChanges.sort((a,b)=>Math.abs(b.changePct)-Math.abs(a.changePct));
     }
@@ -950,11 +972,16 @@ function parseWorkbook(wb){
       D.prevMonth='February 2026';
     }
 
+    // Rotate all monthly arrays so current month is always at position 11
+    if(fyMonthIdx!==11){
+      const rot=arr=>arr.map((_,i)=>arr[(fyMonthIdx-11+i+12)%12]);
+      ['fg','wi','rawmat','comp','outsideSale','outsidePur','inhouseSale','inhousePur','totalSale','totalPur']
+        .forEach(k=>{ if(Array.isArray(D[k])&&D[k].length===12) D[k]=rot(D[k]); });
+    }
+
     console.log('[Parser] Done:',{
-      month:D.reportMonth, wi:D.wi?.length, comp:D.comp?.length,
+      month:D.reportMonth, fyMonthIdx, wi:D.wi?.length, comp:D.comp?.length,
       totalSale:D.totalSale?.slice(-1), totalPur:D.totalPur?.slice(-1),
-      cpSuppliers:D.cpSuppliers?.length, matSuppliers:D.matSuppliers?.length,
-      poOrders:D.poOrders?.length, priceChanges:D.priceChanges?.length,
       fx:D.exchangeRates
     });
     return D;
@@ -994,6 +1021,7 @@ function render(D){
   const n=_n, f1=_f1, f2=_f2;
   const chg=(c,p)=>{ c=n(c);p=n(p); return{val:c-p,pct:p===0?0:((c-p)/p*100)}; };
 
+  const fg=safeArr(D.fg,SAMPLE.fg);
   const wi=safeArr(D.wi,SAMPLE.wi);
   const rm=safeArr(D.rawmat,SAMPLE.rawmat);
   const cp=safeArr(D.comp,SAMPLE.comp);
@@ -1002,7 +1030,7 @@ function render(D){
   const os=safeArr(D.outsideSale,SAMPLE.outsideSale);
   const op=D.outsideProfit||SAMPLE.outsideProfit;
 
-  const cur=11; // index ของเดือนปัจจุบัน (ตำแหน่งสุดท้าย)
+  const cur=11;
   const prev=10;
 
   // ── Badge/labels ──
@@ -1018,6 +1046,7 @@ function render(D){
       sub:'Annual: '+f1(tp.reduce((a,b)=>n(a)+n(b),0))+' M' },
     { label:'Total Sale (เดือนนี้)',    val:n(ts[cur]), prev:n(ts[prev]), unit:'M THB', cls:'kpi-green',
       sub:'Annual: '+f1(ts.reduce((a,b)=>n(a)+n(b),0))+' M' },
+    { label:'FG (เดือนนี้)',             val:n(fg[cur]), prev:n(fg[prev]), unit:'M THB', cls:'kpi-yellow', sub:'' },
     { label:'Component (เดือนนี้)',     val:n(cp[cur]), prev:n(cp[prev]), unit:'M THB', cls:'kpi-orange', sub:'หมวดใหญ่สุด' },
     { label:'Raw Material (เดือนนี้)', val:n(rm[cur]), prev:n(rm[prev]), unit:'M THB', cls:'kpi-purple', sub:'' },
     { label:'WI (เดือนนี้)',            val:n(wi[cur]), prev:n(wi[prev]), unit:'M THB', cls:'kpi-cyan',   sub:'' },
@@ -1044,28 +1073,32 @@ function render(D){
   const op_arr=(key)=>safeArr(D[key],SAMPLE[key]);
   const momRows=[
     { label:'Total Purchase',    cur:n(tp[cur]), prev:n(tp[prev]) },
+    { label:'FG',                cur:n(fg[cur]), prev:n(fg[prev]),  sub:true },
+    { label:'Component',         cur:n(cp[cur]), prev:n(cp[prev]),  sub:true },
+    { label:'Raw Material',      cur:n(rm[cur]), prev:n(rm[prev]),  sub:true },
+    { label:'WI',                cur:n(wi[cur]), prev:n(wi[prev]),  sub:true },
     { label:'Total Sale',        cur:n(ts[cur]), prev:n(ts[prev]) },
-    { label:'Component',         cur:n(cp[cur]), prev:n(cp[prev]) },
-    { label:'Raw Material',      cur:n(rm[cur]), prev:n(rm[prev]) },
-    { label:'WI',                cur:n(wi[cur]), prev:n(wi[prev]) },
     { label:'Outside Sale',      cur:n(os[cur]), prev:n(os[prev]) },
     { label:'Outside Purchase',  cur:n(op_arr('outsidePur')[cur]),  prev:n(op_arr('outsidePur')[prev]) },
     { label:'In-House Sale',     cur:n(op_arr('inhouseSale')[cur]), prev:n(op_arr('inhouseSale')[prev]) },
     { label:'In-House Purchase', cur:n(op_arr('inhousePur')[cur]),  prev:n(op_arr('inhousePur')[prev]) },
   ];
 
-  document.getElementById('momBody').innerHTML = momRows.map(r=>{
+  document.getElementById('momBody').innerHTML = momRows.map((r,i,arr)=>{
     const c=chg(r.cur,r.prev);
     const up=c.val>=0;
     const tag=Math.abs(c.pct)<0.1?
       `<span class="tag tag-neu">= เท่าเดิม</span>`:
       up?`<span class="tag tag-up">▲ เพิ่ม ${f1(c.pct)}%</span>`
         :`<span class="tag tag-dn">▼ ลด ${f1(Math.abs(c.pct))}%</span>`;
-    return `<tr>
-      <td>${r.label}</td>
-      <td class="num-r">${f1(r.prev)}</td>
-      <td class="num-r" style="font-weight:600">${f1(r.cur)}</td>
-      <td class="num-r" style="color:${up?'var(--green)':'var(--red)'};font-weight:600">
+    const isLast = r.sub && (!arr[i+1] || !arr[i+1].sub);
+    const prefix = r.sub ? `<span style="color:var(--border);margin-right:6px">${isLast?'└':'├'}</span>` : '';
+    const rowStyle = r.sub ? 'color:var(--muted);font-size:.8rem' : 'font-weight:600';
+    return `<tr style="${r.sub?'background:rgba(255,255,255,.012)':''}">
+      <td style="${rowStyle}">${prefix}${r.label}</td>
+      <td class="num-r" style="${r.sub?'color:var(--muted)':''}">${f1(r.prev)}</td>
+      <td class="num-r" style="${r.sub?'':'font-weight:600'}">${f1(r.cur)}</td>
+      <td class="num-r" style="color:${up?'var(--green)':'var(--red)'};${r.sub?'':'font-weight:600'}">
         ${up?'+':''}${f1(c.val)}
       </td>
       <td class="num-r" style="color:${up?'var(--green)':'var(--red)'}">
@@ -1085,9 +1118,10 @@ function render(D){
   makeChart('trendChart',{
     type:'bar',
     data:{labels, datasets:[
-      {label:'Component', data:cp, backgroundColor:'rgba(88,166,255,.75)', stack:'s', borderRadius:2},
-      {label:'Raw Material', data:rm, backgroundColor:'rgba(63,185,80,.75)', stack:'s', borderRadius:2},
-      {label:'WI', data:wi, backgroundColor:'rgba(163,113,247,.75)', stack:'s', borderRadius:2},
+      {label:'FG',          data:fg, backgroundColor:'rgba(227,179,65,.75)',  stack:'s', borderRadius:2},
+      {label:'Component',   data:cp, backgroundColor:'rgba(88,166,255,.75)',  stack:'s', borderRadius:2},
+      {label:'Raw Material',data:rm, backgroundColor:'rgba(63,185,80,.75)',   stack:'s', borderRadius:2},
+      {label:'WI',          data:wi, backgroundColor:'rgba(163,113,247,.75)', stack:'s', borderRadius:2},
     ]},
     options:{
       responsive:true, maintainAspectRatio:false,
