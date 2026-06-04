@@ -750,19 +750,24 @@ function parseWorkbook(wb){
       }
     });
 
-    // Section Sale/Pur annual totals (rows ~57-65)
+    // Section Sale/Pur annual totals
+    // Structure: col4=section(IE/SS/FU, blank on Purchase rows), col5=Sale|Purchase, col6+=monthly THB
+    // Guard: ignore rows where col6 < 1e5 (those are unit-count rows, not THB rows)
     D.sectionSale={IE:0,SS:0,FU:0}; D.sectionPur={IE:0,SS:0,FU:0};
-    sum.forEach(row=>{
-      if(!row) return;
+    {
+      const SECS=['IE','SS','FU'];
       const sumOf=r=>{ let s=0; for(let c=6;c<=17;c++) s+=toNum(r[c]); return parseFloat((s/1e6).toFixed(1)); };
-      const c4=String(row[4]||''), c5=String(row[5]||'');
-      if(c4==='IE'&&c5==='Sale'   &&toNum(row[6])>0) D.sectionSale.IE=sumOf(row);
-      if(c4==='SS'&&c5==='Sale'   &&toNum(row[6])>0) D.sectionSale.SS=sumOf(row);
-      if(c4==='FU'&&c5==='Sale'   &&toNum(row[6])>0) D.sectionSale.FU=sumOf(row);
-      if(c4==='IE'&&c5==='Purchase'&&toNum(row[6])>0) D.sectionPur.IE=sumOf(row);
-      if(c4==='SS'&&c5==='Purchase'&&toNum(row[6])>0) D.sectionPur.SS=sumOf(row);
-      if(c4==='FU'&&c5==='Purchase'&&toNum(row[6])>0) D.sectionPur.FU=sumOf(row);
-    });
+      let lastSec='';
+      sum.forEach(row=>{
+        if(!row) return;
+        const c4=String(row[4]||'').trim(), c5=String(row[5]||'').trim();
+        const firstVal=toNum(row[6]);
+        if(SECS.includes(c4)) lastSec=c4;   // track section name (blank on Purchase rows)
+        if(!lastSec||firstVal<1e5) return;   // skip noise rows
+        if(c5==='Sale'    &&!D.sectionSale[lastSec]) D.sectionSale[lastSec]=sumOf(row);
+        if(c5==='Purchase'&&!D.sectionPur[lastSec])  D.sectionPur[lastSec]=sumOf(row);
+      });
+    }
 
     // ══════════════════════════════════════════════════════
     // 3. Outside Profit vs Plan
