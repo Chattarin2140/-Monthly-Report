@@ -484,7 +484,7 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
         <div class="card-hd">ชิ้นส่วนที่ราคาเปลี่ยน – <span id="priceChgCount">0</span> รายการ</div>
         <div class="card-sub">เปรียบเทียบราคา MAR'26 vs Price 2024</div>
       </div>
-      <div class="filter-row" style="margin:0">
+      <div class="filter-row" style="margin:0" id="priceFilterRow">
         <button class="filt-btn active" onclick="filterPrice('ALL',this)">ทั้งหมด</button>
         <button class="filt-btn" onclick="filterPrice('UP',this)">▲ ขึ้น</button>
         <button class="filt-btn" onclick="filterPrice('DN',this)">▼ ลง</button>
@@ -696,19 +696,6 @@ function parseWorkbook(wb){
     D.inhouseSale=[]; D.inhousePur=[];
     D.totalSale=[];   D.totalPur=[];
 
-    // Debug: dump rows that look like category totals
-    console.group('[SumData] rows with Total+Amount');
-    sum.forEach((row,idx)=>{
-      if(!row) return;
-      const hasTotal  = row.some(v=>String(v||'').trim()==='Total');
-      const hasAmount = row.some(v=>String(v||'').trim()==='Amount');
-      if(hasTotal&&hasAmount){
-        const preview=row.slice(0,8).map(v=>String(v??'').trim());
-        console.log(`row${idx}:`, JSON.stringify(preview));
-      }
-    });
-    console.groupEnd();
-
     // ── FG: "PUR.FOR SALE (F/G)" — IE+SS+FU rows, no Total row exists ──
     let fgAnchorIdx=-1;
     sum.forEach((row,idx)=>{
@@ -884,7 +871,7 @@ function parseWorkbook(wb){
             price:toNum(row[5]), qty:toNum(row[6]),
             amount:amt, currency:cur
           });
-          if(cur==='THB') D.poTotal+=amt;
+          if(cur==='THB') D.poTotal+=amt; // business rule: รวมเฉพาะ THB, ไม่แปลง FX
         }
       });
     }
@@ -996,6 +983,7 @@ function parseWorkbook(wb){
 // ================================================================
 //  HISTORY STORE – สะสมข้อมูลจากหลายไฟล์ต่อกันเรื่อย ๆ
 // ================================================================
+const HIST_VERSION = 1; // เพิ่มเมื่อ schema ของ MONTH_HISTORY เปลี่ยน เพื่อ invalidate localStorage เก่า
 let MONTH_HISTORY = {};  // { "Apr'25": { wi, rawmat, ... }, ... }
 let LAST_GOOD     = {};  // section snapshot ล่าสุดที่มีข้อมูลจริง
 
@@ -1022,7 +1010,7 @@ function _hasData(key, val){
 // แปลง label "Apr'25" → sort key เพื่อเรียงตามเวลา
 function _mKey(label){
   const CAL={Jan:0,Feb:1,Mar:2,Apr:3,May:4,Jun:5,Jul:6,Aug:7,Sep:8,Oct:9,Nov:10,Dec:11};
-  const mon=label.slice(0,3), yr=parseInt('20'+label.slice(4));
+  const mon=label.slice(0,3), yr=parseInt('20'+label.slice(4).replace(/\D/g,''));
   return yr*100+(CAL[mon]??0);
 }
 function sortMonthLabels(labels){
@@ -1104,23 +1092,31 @@ function buildCombinedData(D){
 }
 
 // LocalStorage helpers
+const _HK = 'mnth_hist_v'  + HIST_VERSION;
+const _GK = 'mnth_lgood_v' + HIST_VERSION;
 function _saveHistory(){
   try{
-    localStorage.setItem('mnth_hist',      JSON.stringify(MONTH_HISTORY));
-    localStorage.setItem('mnth_last_good', JSON.stringify(LAST_GOOD));
-  }catch(e){}
+    localStorage.setItem(_HK, JSON.stringify(MONTH_HISTORY));
+    localStorage.setItem(_GK, JSON.stringify(LAST_GOOD));
+  }catch(e){
+    console.warn('[History] localStorage quota exceeded — history not saved:', e.message);
+  }
 }
 function _loadHistory(){
   try{
-    const h=localStorage.getItem('mnth_hist');
-    const g=localStorage.getItem('mnth_last_good');
+    // ลบ key รุ่นเก่า (unversioned)
+    localStorage.removeItem('mnth_hist');
+    localStorage.removeItem('mnth_last_good');
+    const h=localStorage.getItem(_HK);
+    const g=localStorage.getItem(_GK);
     if(h) MONTH_HISTORY=JSON.parse(h);
     if(g) LAST_GOOD    =JSON.parse(g);
   }catch(e){}
 }
 function clearHistory(){
   MONTH_HISTORY={}; LAST_GOOD={};
-  _saveHistory();
+  localStorage.removeItem(_HK);
+  localStorage.removeItem(_GK);
   _updateHistBadge();
   showEmpty();
 }
@@ -1393,7 +1389,9 @@ function render(D){
 
   // 5. CP Trend (ใช้ fyLabels เสมอ — 12 เดือน FY ปัจจุบัน ไม่ extend)
   const cpColors=['#58a6ff','#3fb950','#f0883e','#a371f7','#39d3f5','#f85149'];
-  const cpMonths=["2024Avg",...fyLabels];
+  // ปรับ label ให้ตรงกับจำนวน data point จริง (parsed=12, SAMPLE=13 มี 2024Avg)
+  const firstCpArr=Object.values(cpTrend)[0];
+  const cpMonths=firstCpArr?.length>12?["2024Avg",...fyLabels]:fyLabels;
   makeChart('cpTrendChart',{
     type:'line',
     data:{
@@ -1442,11 +1440,29 @@ function render(D){
   makeChart('secSaleChart',barCfg(secSale,'Annual Sale'));
   makeChart('secPurChart', barCfg(secPur, 'Annual Purchase'));
 
+  // ── SUPPLIER TABLE BUILDER ──
+  const buildSup=(tbodyId,suppliers,isMillion)=>{
+    const max=suppliers[0]?.amount||1;
+    document.getElementById(tbodyId).innerHTML=suppliers.slice(0,12).map((s,i)=>{
+      const rClass=i===0?'r1':i===1?'r2':i===2?'r3':'rn';
+      const pct=n(s.amount/max*100).toFixed(0);
+      const display=isMillion?n(s.amount).toFixed(2)+' M':n(s.amount).toLocaleString('th-TH');
+      return `<tr>
+        <td><span class="rank ${rClass}">${i+1}</span></td>
+        <td><strong>${s.name}</strong></td>
+        <td class="num-r">${display}</td>
+        <td><span class="mini-bar"><span class="mini-bar-fill" style="width:${pct}%;background:${i<3?'var(--blue)':'#30363d'}"></span></span></td>
+      </tr>`;
+    }).join('');
+  };
+
   // ── RAW MATERIAL TREND ──
   const matSup  = D.matSuppliers||SAMPLE.matSuppliers;
   const matTrend= D.matTrend   ||SAMPLE.matTrend;
   const matColors=['#e3b341','#f0883e','#3fb950','#a371f7','#39d3f5','#f85149'];
-  const cpMonths2=["2024Avg",...fyLabels];  // ใช้ fyLabels เหมือนกัน
+  // ปรับ label ให้ตรงกับจำนวน data point จริง (parsed=12, SAMPLE=13 มี 2024Avg)
+  const firstMatArr=Object.values(matTrend)[0];
+  const cpMonths2=firstMatArr?.length>12?["2024Avg",...fyLabels]:fyLabels;
   makeChart('matTrendChart',{
     type:'line',
     data:{labels:cpMonths2,
@@ -1528,20 +1544,6 @@ function render(D){
   }).join('');
 
   // ── SUPPLIER TABLES ──
-  function buildSup(tbodyId, suppliers, isMillion){
-    const max = suppliers[0]?.amount||1;
-    document.getElementById(tbodyId).innerHTML = suppliers.slice(0,12).map((s,i)=>{
-      const rClass=i===0?'r1':i===1?'r2':i===2?'r3':'rn';
-      const pct=n(s.amount/max*100).toFixed(0);
-      const display = isMillion ? n(s.amount).toFixed(2)+' M' : n(s.amount).toLocaleString('th-TH');
-      return `<tr>
-        <td><span class="rank ${rClass}">${i+1}</span></td>
-        <td><strong>${s.name}</strong></td>
-        <td class="num-r">${display}</td>
-        <td><span class="mini-bar"><span class="mini-bar-fill" style="width:${pct}%;background:${i<3?'var(--blue)':'#30363d'}"></span></span></td>
-      </tr>`;
-    }).join('');
-  }
   buildSup('poBody', poSup.filter(s=>s.amount>0), false);
   buildSup('cpBody', cpSup.filter(s=>s.amount>0), true);
 }
@@ -1608,7 +1610,7 @@ function renderPriceTable(data){
 function filterPrice(dir,btn){
   if(dir) window._priceDir=dir;
   if(btn){
-    document.querySelectorAll('.filter-row .filt-btn').forEach(b=>b.classList.remove('active'));
+    document.querySelectorAll('#priceFilterRow .filt-btn').forEach(b=>b.classList.remove('active'));
     btn.classList.add('active');
   }
   renderPriceTable(window._priceChanges||[]);
@@ -1649,14 +1651,11 @@ async function handleFiles(files){
   if(!files||files.length===0) return;
   closeOverlay();
 
-  const names=[...files].map(f=>f.name).join(', ');
   document.getElementById('badgeFile').textContent = `⏳ กำลังอ่าน ${files.length} ไฟล์…`;
 
-  let lastParsed=null;
-  for(const file of [...files]){
-    const parsed = await handleFile(file);
-    if(parsed) lastParsed=parsed;
-  }
+  // อ่านทุกไฟล์พร้อมกัน (Promise.all) ผลลัพธ์ยังคง order เดิม
+  const results = await Promise.all([...files].map(handleFile));
+  const lastParsed = results.filter(Boolean).pop();
 
   if(lastParsed){
     const combined = buildCombinedData(lastParsed);
@@ -1695,18 +1694,16 @@ overlay.addEventListener('click', e=>{ if(e.target===overlay) closeOverlay() });
   _loadHistory();
   _updateHistBadge();
 
-  // 2. ค้นหาไฟล์ .xlsx อัตโนมัติ: ลอง HEAD request ทุก pattern ย้อนหลัง 24 เดือน
+  // 2. ค้นหาไฟล์ .xlsx อัตโนมัติ: ตรวจทุกเดือนพร้อมกัน (parallel) แต่ pattern ภายในยัง sequential
   async function discoverXlsx(){
     const MN=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
     const now=new Date();
-    const found=[];
-    // ย้อนหลัง 24 เดือน → เดือนถัดไป (เก่า→ใหม่)
-    for(let delta=24; delta>=-1; delta--){
-      const d=new Date(now.getFullYear(), now.getMonth()-delta, 1);
-      const m=d.getMonth()+1;         // 1-12
-      const mon=MN[d.getMonth()];     // Jan…Dec
-      const yy=String(d.getFullYear()).slice(-2);
-      // รูปแบบไฟล์ที่เป็นไปได้
+    const months=[];
+    for(let delta=24;delta>=-1;delta--)
+      months.push(new Date(now.getFullYear(),now.getMonth()-delta,1));
+
+    const results=await Promise.all(months.map(async d=>{
+      const m=d.getMonth()+1, mon=MN[d.getMonth()], yy=String(d.getFullYear()).slice(-2);
       const patterns=[
         `${m}. ${mon}'${yy}.xlsx`,
         `${m}. ${mon}'${yy} 1.xlsx`,
@@ -1717,11 +1714,12 @@ overlay.addEventListener('click', e=>{ if(e.target===overlay) closeOverlay() });
       for(const fname of patterns){
         try{
           const r=await fetch(fname,{method:'HEAD'});
-          if(r.ok){ found.push(fname); break; } // เจอแล้ว ไม่ต้องลอง pattern อื่น
+          if(r.ok) return fname; // เจอแล้ว ไม่ต้องลอง pattern อื่น
         }catch(e){}
       }
-    }
-    return found; // เรียงลำดับเก่า→ใหม่แล้ว (ตาม loop)
+      return null;
+    }));
+    return results.filter(Boolean); // คง order เก่า→ใหม่ (Promise.all preserve order)
   }
   const CANDIDATES = await discoverXlsx();
   let lastParsed = null, lastFname = null;
