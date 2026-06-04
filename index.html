@@ -260,7 +260,7 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
     <div class="header-meta">
       <span class="badge badge-blue" id="badgeMonth">March 2026</span>
       <span class="badge badge-green">GROUP : AUTOMOTIVE PART</span>
-      <span class="badge badge-orange" id="badgeFile">📄 3. Mar'26.xlsx (Sample)</span>
+      <span class="badge badge-orange" id="badgeFile" style="display:none"></span>
       <span class="badge badge-purple" id="badgeHistory" style="display:none"></span>
       <button id="clearHistBtn" onclick="clearHistory()" style="display:none;
         padding:3px 10px;border-radius:6px;border:1px solid rgba(248,81,73,.4);
@@ -281,8 +281,25 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
   </button>
 </header>
 
+<!-- EMPTY STATE -->
+<div id="emptyState" style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:calc(100vh - 80px);padding:40px 20px;text-align:center">
+  <div style="font-size:5rem;line-height:1;margin-bottom:20px;opacity:.6">📊</div>
+  <h2 style="font-size:1.5rem;font-weight:700;margin-bottom:10px">ยังไม่มีข้อมูล</h2>
+  <p style="color:var(--muted);font-size:.9rem;max-width:420px;line-height:1.7;margin-bottom:28px">
+    กรุณา Import ไฟล์ Excel (.xlsx) ของ Monthly Report<br>เพื่อเริ่มต้นดูรายงาน
+  </p>
+  <button class="import-btn" onclick="openOverlay()" style="font-size:.9rem;padding:12px 32px;gap:10px">
+    <svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor">
+      <path d="M.5 9.9a.5.5 0 0 1 .5.5v2.5a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-2.5a.5.5 0 0 1 1 0v2.5a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2v-2.5a.5.5 0 0 1 .5-.5z"/>
+      <path d="M7.646 1.146a.5.5 0 0 1 .708 0l3 3a.5.5 0 0 1-.708.708L8.5 2.707V11.5a.5.5 0 0 1-1 0V2.707L5.354 4.854a.5.5 0 1 1-.708-.708l3-3z"/>
+    </svg>
+    Import Excel
+  </button>
+  <p style="color:var(--border);font-size:.72rem;margin-top:14px">รองรับ .xlsx · ลากไฟล์มาวางได้ทุกที่บนหน้าจอ</p>
+</div>
+
 <!-- MAIN -->
-<div class="main">
+<div class="main" id="mainContent" style="display:none">
 
   <!-- KPI -->
   <div class="section-title">📌 Key Metrics – <span id="kpiMonthLabel">March 2026</span></div>
@@ -486,7 +503,7 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 
 </div><!-- /main -->
 
-<footer class="footer">
+<footer class="footer" id="footerEl" style="display:none">
   PURCHASE AMOUNT MONTHLY REPORT &nbsp;|&nbsp; GROUP : AUTOMOTIVE PART &nbsp;|&nbsp;
   Powered by SheetJS + Chart.js
 </footer>
@@ -1100,7 +1117,7 @@ function clearHistory(){
   MONTH_HISTORY={}; LAST_GOOD={};
   _saveHistory();
   _updateHistBadge();
-  render(SAMPLE);
+  showEmpty();
 }
 
 // อัปเดต badge แสดงช่วงเวลาที่โหลดไว้
@@ -1143,9 +1160,26 @@ function _f1(v){ return _n(v).toFixed(1); }
 function _f2(v){ return _n(v).toFixed(2); }
 
 // ================================================================
+//  EMPTY / DASHBOARD STATE
+// ================================================================
+function showEmpty(){
+  document.getElementById('emptyState').style.display='flex';
+  document.getElementById('mainContent').style.display='none';
+  document.getElementById('footerEl').style.display='none';
+  document.getElementById('badgeFile').style.display='none';
+}
+function showDashboard(){
+  document.getElementById('emptyState').style.display='none';
+  document.getElementById('mainContent').style.display='';
+  document.getElementById('footerEl').style.display='';
+  document.getElementById('badgeFile').style.display='';
+}
+
+// ================================================================
 //  RENDER DASHBOARD
 // ================================================================
 function render(D){
+  showDashboard();
   // ── Safe helpers (local aliases of globals) ───────────────────
   // รองรับ array ยาวกว่า 12 เดือน (history mode)
   const safeArr=(a,fb)=>(Array.isArray(a)&&a.length>=2)?a:fb;
@@ -1627,8 +1661,7 @@ async function handleFiles(files){
     render(combined);
   } else {
     alert('⚠️ ไม่พบข้อมูลในไฟล์ที่อัปโหลด กรุณาตรวจสอบว่าเป็นไฟล์ Monthly Report ที่ถูกต้อง');
-    document.getElementById('badgeFile').textContent = '📄 Sample Data';
-    render(SAMPLE);
+    if(Object.keys(MONTH_HISTORY).length===0) showEmpty();
   }
 }
 
@@ -1713,12 +1746,13 @@ overlay.addEventListener('click', e=>{ if(e.target===overlay) closeOverlay() });
   // 3. ถ้ามี history อยู่แล้ว ใช้ข้อมูลจาก history (ไม่ต้อง re-import)
   const histLabels = sortMonthLabels(Object.keys(MONTH_HISTORY));
   if(histLabels.length > 0){
+    document.getElementById('badgeFile').textContent = `📅 ข้อมูลจาก ${histLabels.length} เดือน (ประวัติ)`;
     render(buildCombinedData(SAMPLE));
     return;
   }
 
-  // 4. Fallback: sample data
-  render(SAMPLE);
+  // 4. ไม่มีข้อมูล → แสดง empty state
+  showEmpty();
 })();
 </script>
 </body>
