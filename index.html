@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+ <!DOCTYPE html>
 <html lang="th">
 <head>
 <meta charset="UTF-8"/>
@@ -231,6 +231,16 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 ::-webkit-scrollbar{width:5px}
 ::-webkit-scrollbar-track{background:var(--bg)}
 ::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px}
+
+/* ── MONTH SELECTOR ── */
+.month-sel-wrap{display:none;align-items:center;gap:8px}
+.month-sel{
+  background:var(--surface2);border:1px solid var(--border);
+  color:var(--text);border-radius:6px;padding:5px 10px;
+  font-size:.78rem;cursor:pointer;outline:none;transition:.15s;
+}
+.month-sel:focus,.month-sel:hover{border-color:var(--blue)}
+.month-sel option{background:var(--surface2)}
 </style>
 </head>
 <body>
@@ -271,6 +281,10 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
         🗑️ ล้างประวัติ
       </button>
     </div>
+  </div>
+  <div class="month-sel-wrap" id="monthSelWrap">
+    <span style="font-size:.72rem;color:var(--muted);white-space:nowrap">ดูเดือน:</span>
+    <select id="monthSelect" class="month-sel" onchange="onMonthSelect(this.value)"></select>
   </div>
   <button class="import-btn" onclick="openOverlay()">
     <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
@@ -425,7 +439,7 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
   <div class="section-title">🧱 Raw Material Supplier Trend – FY2025</div>
   <div class="grid-2">
     <div class="card">
-      <div class="card-hd">Top Raw Material Suppliers (MAR'26)</div>
+      <div class="card-hd" id="matSupHd">Top Raw Material Suppliers (MAR'26)</div>
       <div class="card-sub">Purchase Amount (M THB)</div>
       <table class="sup-table">
         <thead><tr><th>#</th><th>Supplier</th><th class="num-r">MAR (M THB)</th><th>สัดส่วน</th></tr></thead>
@@ -450,7 +464,7 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
       <div class="fx-card"><div class="fx-label">JPY / THB</div><div class="fx-val" id="fxJPY">–</div><div class="fx-unit">THB per 1 JPY</div></div>
     </div>
     <br>
-    <div class="card-hd" style="margin-bottom:8px">Top Direct IP Suppliers – Part Count (MAR'26)</div>
+    <div class="card-hd" id="dipSupHd" style="margin-bottom:8px">Top Direct IP Suppliers – Part Count (MAR'26)</div>
     <div class="ch ch-180"><canvas id="dipChart"></canvas></div>
   </div>
 
@@ -1144,6 +1158,29 @@ function _updateHistBadge(){
 // ================================================================
 const CHARTS={};
 const GRID='rgba(48,54,61,.55)';
+
+// ── MONTH SELECTOR STATE ──
+let CURRENT_D = null;
+let SEL_MONTH_IDX = -1; // -1 = always use latest
+const _MN_LONG_G = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+const _MN_CAL_G  = {Jan:0,Feb:1,Mar:2,Apr:3,May:4,Jun:5,Jul:6,Aug:7,Sep:8,Oct:9,Nov:10,Dec:11};
+function _lblFull(lbl){
+  const m=_MN_CAL_G[lbl.slice(0,3)]??0, yr='20'+lbl.slice(4).replace(/\D/g,'');
+  return _MN_LONG_G[m]+' '+yr;
+}
+function _lblShort(lbl){ return lbl.slice(0,3).toUpperCase()+"'"+lbl.slice(4); }
+function populateMonthSelector(labels){
+  const sel=document.getElementById('monthSelect');
+  if(!sel||!labels.length) return;
+  const cur=SEL_MONTH_IDX<0?labels.length-1:Math.min(SEL_MONTH_IDX,labels.length-1);
+  sel.innerHTML=labels.map((l,i)=>`<option value="${i}"${i===cur?' selected':''}>${l}</option>`).join('');
+  SEL_MONTH_IDX=cur;
+}
+function onMonthSelect(idxStr){
+  SEL_MONTH_IDX=parseInt(idxStr);
+  if(CURRENT_D) render(CURRENT_D);
+}
+
 Chart.defaults.color='#8b949e';
 Chart.defaults.font.family="'Segoe UI',system-ui,sans-serif";
 Chart.defaults.font.size=11;
@@ -1168,18 +1205,21 @@ function showEmpty(){
   document.getElementById('mainContent').style.display='none';
   document.getElementById('footerEl').style.display='none';
   document.getElementById('badgeFile').style.display='none';
+  document.getElementById('monthSelWrap').style.display='none';
 }
 function showDashboard(){
   document.getElementById('emptyState').style.display='none';
   document.getElementById('mainContent').style.display='';
   document.getElementById('footerEl').style.display='';
   document.getElementById('badgeFile').style.display='';
+  document.getElementById('monthSelWrap').style.display='flex';
 }
 
 // ================================================================
 //  RENDER DASHBOARD
 // ================================================================
 function render(D){
+  CURRENT_D = D;
   showDashboard();
   // ── Safe helpers (local aliases of globals) ───────────────────
   // รองรับ array ยาวกว่า 12 เดือน (history mode)
@@ -1196,16 +1236,26 @@ function render(D){
   const os=safeArr(D.outsideSale,SAMPLE.outsideSale);
   const op=D.outsideProfit||SAMPLE.outsideProfit;
 
-  // Dynamic: ชี้ไปที่เดือนสุดท้ายเสมอ ไม่ว่า array จะยาวเท่าไหร่
-  const cur  = wi.length - 1;
-  const prev = wi.length - 2;
+  // ── Month selector ──
+  const labels   = D.months||SAMPLE.months;
+  const fyLabels = D._fyLabels||D.months||SAMPLE.months;
+  populateMonthSelector(labels);
+  const selIdx   = SEL_MONTH_IDX<0?labels.length-1:Math.min(SEL_MONTH_IDX,labels.length-1);
+  const _selLbl  = labels[selIdx];
+  const _prevLbl = selIdx>0?labels[selIdx-1]:null;
+  const _repMon  = _selLbl?_lblFull(_selLbl):(D.reportMonth||SAMPLE.reportMonth);
+  const _prevMon = _prevLbl?_lblFull(_prevLbl):(D.prevMonth||SAMPLE.prevMonth);
+  const _repShrt = _selLbl?_lblShort(_selLbl):'–';
+
+  // Dynamic: ชี้ไปที่เดือนที่เลือก (default = ล่าสุด)
+  const cur  = selIdx;
+  const prev = selIdx - 1;
 
   // ── Badge/labels ──
-  document.getElementById('badgeMonth').textContent = D.reportMonth||SAMPLE.reportMonth;
-  document.getElementById('kpiMonthLabel').textContent = D.reportMonth||SAMPLE.reportMonth;
-  document.getElementById('momSubLabel').textContent =
-    `${D.reportMonth||SAMPLE.reportMonth} vs ${D.prevMonth||SAMPLE.prevMonth}`;
-  document.getElementById('profitSubLabel').textContent = D.reportMonth||SAMPLE.reportMonth;
+  document.getElementById('badgeMonth').textContent = _repMon;
+  document.getElementById('kpiMonthLabel').textContent = _repMon;
+  document.getElementById('momSubLabel').textContent = `${_repMon} vs ${_prevMon}`;
+  document.getElementById('profitSubLabel').textContent = _repMon;
 
   // ── KPI CARDS ──
   const kpis=[
@@ -1277,8 +1327,6 @@ function render(D){
   }).join('');
 
   // ── CHARTS ──
-  const labels   = D.months||SAMPLE.months;            // extended timeline (ทุกเดือนที่ import)
-  const fyLabels = D._fyLabels||D.months||SAMPLE.months; // 12 เดือน FY ปัจจุบัน (สำหรับ supplier trend)
   const cpTrend  = D.cpTrend||SAMPLE.cpTrend;
   const cpSup    = D.cpSuppliers||SAMPLE.cpSuppliers;
   const poSup    = D.poSuppliers||SAMPLE.poSuppliers;
@@ -1482,7 +1530,11 @@ function render(D){
   document.getElementById('fxUSD').textContent = fx.USD ? fx.USD.toFixed(4) : '–';
   document.getElementById('fxEUR').textContent = fx.EUR ? fx.EUR.toFixed(4) : '–';
   document.getElementById('fxJPY').textContent = fx.JPY ? (fx.JPY/100).toFixed(4) : '–';
-  document.getElementById('fxSubLabel').textContent = D.reportMonth||SAMPLE.reportMonth;
+  document.getElementById('fxSubLabel').textContent = _repMon;
+  const _ms=document.getElementById('matSupHd');
+  if(_ms) _ms.textContent=`Top Raw Material Suppliers (${_repShrt})`;
+  const _ds=document.getElementById('dipSupHd');
+  if(_ds) _ds.textContent=`Top Direct IP Suppliers – Part Count (${_repShrt})`;
 
   // Direct IP supplier donut
   const dipSup=D.dipSuppliers||SAMPLE.dipSuppliers;
@@ -1662,6 +1714,7 @@ async function handleFiles(files){
     document.getElementById('badgeFile').textContent =
       files.length>1 ? `📄 ${files.length} ไฟล์` : `📄 ${files[0].name}`;
     _updateHistBadge();
+    SEL_MONTH_IDX = -1;
     render(combined);
   } else {
     alert('⚠️ ไม่พบข้อมูลในไฟล์ที่อัปโหลด กรุณาตรวจสอบว่าเป็นไฟล์ Monthly Report ที่ถูกต้อง');
